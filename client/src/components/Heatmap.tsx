@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { GazeData } from "@shared/schema";
+import type { GazeData } from "../types/gazeData";
 import * as d3 from "d3";
+import * as d3Hexbin from 'd3-hexbin';
 import { startTracking } from "../lib/gazecloud";
 
 export default function Heatmap() {
@@ -22,7 +23,9 @@ export default function Heatmap() {
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
 
-    const hexbin = d3.hexbin().radius(30).extent([[0, 0], [width, height]]);
+    const hexbin = d3Hexbin.hexbin<[number, number]>()
+      .radius(30)
+      .extent([[0, 0], [width, height]]);
 
     // Compute Fixation Density
     const FIXATION_THRESHOLD = 30; 
@@ -32,10 +35,11 @@ export default function Heatmap() {
       return Math.sqrt((d.x - prev.x) ** 2 + (d.y - prev.y) ** 2) < FIXATION_THRESHOLD;
     });
 
-    const points = filteredFixations.map((d) => [d.x, d.y]);
+    const points = filteredFixations.map((d) => [d.x, d.y] as [number, number]);
     const bins = hexbin(points);
 
-    const color = d3.scaleSequential(d3.interpolatePlasma).domain([0, d3.max(bins, (d) => d.length) || 0]);
+    const color = d3.scaleSequential(d3.interpolatePlasma)
+      .domain([0, d3.max(bins, d => d.length) ?? 0]);
 
     svg
       .append("g")
@@ -44,8 +48,8 @@ export default function Heatmap() {
       .enter()
       .append("path")
       .attr("d", hexbin.hexagon())
-      .attr("transform", (d) => `translate(${d.x},${d.y})`)
-      .attr("fill", (d) => color(d.length || 0))
+      .attr("transform", d => `translate(${d.x},${d.y})`)
+      .attr("fill", d => color(d.length))
       .attr("stroke", "#222");
   }, [gazeData]);
 
