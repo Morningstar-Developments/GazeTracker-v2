@@ -10,22 +10,23 @@ class CSVExporter:
 
     def export_session(self, session_data: Dict) -> str:
         """Export session data to CSV format"""
-        self.session_data = session_data
-        output = io.StringIO()
-        writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+        try:
+            self.session_data = session_data
+            output = io.StringIO()
+            writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
 
-        # Write session metadata
-        self._write_session_info(writer)
-        writer.writerow([])  # Empty row for separation
+            self._write_session_info(writer)
+            writer.writerow([])
 
-        # Write analytics
-        self._write_analytics(writer)
-        writer.writerow([])
+            self._write_analytics(writer)
+            writer.writerow([])
 
-        # Write gaze data with fixations and saccades
-        self._write_gaze_data(writer)
+            self._write_gaze_data(writer)
 
-        return output.getvalue()
+            return output.getvalue()
+        except Exception as e:
+            print(f"❌ CSV Export Error: {e}")
+            return ""
 
     def _write_session_info(self, writer: csv.writer):
         """Write session metadata"""
