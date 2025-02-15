@@ -50,5 +50,5 @@ export default function Heatmap() {
       .attr("stroke", "#222");
   }, [gazeData]);
 
-  return <svg ref={svgRef} width="100%" height="100%" />;
+  return <svg ref={svgRef} width="800" height="600" />;
 } 

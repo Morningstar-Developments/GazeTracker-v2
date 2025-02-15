@@ -1,16 +1,4 @@
-interface GazeData {
-  x: number;
-  y: number;
-  timestamp: number;
-  confidence: number;
-  pupilD: number;
-  docX: number;
-  docY: number;
-  HeadX: number;
-  HeadY: number;
-  HeadZ: number;
-  HeadYaw: number;
-}
+import type { GazeData } from '../types/gazeData';
 
 declare global {
   interface Window {
