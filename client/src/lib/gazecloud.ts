@@ -1,4 +1,16 @@
-import type { GazeData } from '../types/gazeData';
+interface GazeData {
+  x: number;
+  y: number;
+  timestamp: number;
+  confidence: number;
+  pupilD: number;
+  docX: number;
+  docY: number;
+  HeadX: number;
+  HeadY: number;
+  HeadZ: number;
+  HeadYaw: number;
+}
 
 declare global {
   interface Window {
@@ -90,4 +102,4 @@ export function stopTracking() {
     console.error("❌ Gaze Stopping Error:", error);
     throw error;
   }
-}
+} 

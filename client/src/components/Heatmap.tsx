@@ -1,13 +1,11 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { GazeData } from "../types/gazeData";
 import * as d3 from "d3";
 import { hexbin } from 'd3-hexbin';
-import { startTracking } from "../lib/gazecloud";
 
 export default function Heatmap() {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [gazePoints, setGazePoints] = useState<GazeData[]>([]);
 
   // Fetch historical gaze data
   const { data: gazeData } = useQuery<GazeData[]>({
@@ -53,4 +51,4 @@ export default function Heatmap() {
   }, [gazeData]);
 
   return <svg ref={svgRef} width="100%" height="100%" />;
-}
+} 
