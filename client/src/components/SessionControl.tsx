@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { fetchApi } from '../lib/api';
 
 interface SessionConfig {
   participantId: string;
   isPilot: boolean;
+}
+
+interface SaveSessionResponse {
+  filename: string;
 }
 
 export default function SessionControl() {
@@ -12,25 +17,22 @@ export default function SessionControl() {
 
   const initSession = useMutation({
     mutationFn: (config: SessionConfig) =>
-      fetch('/api/sessions', {
+      fetchApi<{ message: string }>('api/sessions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(config),
-      }).then(res => res.json()),
+      }),
   });
 
   const saveSession = useMutation({
     mutationFn: () =>
-      fetch('/api/sessions/current/save', {
+      fetchApi<SaveSessionResponse>('api/sessions/current/save', {
         method: 'POST',
-      }).then(res => res.json()),
+      }),
   });
 
   const clearSession = useMutation({
     mutationFn: () =>
-      fetch('/api/sessions/current', {
+      fetchApi('api/sessions/current', {
         method: 'DELETE',
       }),
   });

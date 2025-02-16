@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { startTracking, stopTracking } from '../lib/gazecloud';
+import { fetchApi } from '../lib/api';
 import type { GazeData } from '../types/gazeData';
 
 export default function GazeTracker() {
@@ -8,11 +9,8 @@ export default function GazeTracker() {
   const handleStartTracking = useCallback(() => {
     startTracking((data: GazeData) => {
       // Send gaze data to the server
-      fetch('/api/sessions/current/gaze', {
+      fetchApi('api/sessions/current/gaze', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(data),
       }).catch(console.error);
     });

@@ -3,13 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import type { GazeData } from "../types/gazeData";
 import * as d3 from "d3";
 import { hexbin } from 'd3-hexbin';
+import { fetchApi } from "../lib/api";
 
 export default function Heatmap() {
   const svgRef = useRef<SVGSVGElement>(null);
 
   // Fetch historical gaze data
   const { data: gazeData } = useQuery<GazeData[]>({
-    queryKey: ["/api/sessions/current/gaze"],
+    queryKey: ["gaze-data"],
+    queryFn: () => fetchApi("api/sessions/current/gaze"),
   });
 
   useEffect(() => {

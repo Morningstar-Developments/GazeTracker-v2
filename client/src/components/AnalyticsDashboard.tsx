@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as d3 from 'd3';
 import type { GazeData } from '../types/gazeData';
+import { fetchApi } from '../lib/api';
 
 export default function AnalyticsDashboard() {
   const confidenceChartRef = useRef<SVGSVGElement>(null);
@@ -10,7 +11,8 @@ export default function AnalyticsDashboard() {
   const metricsRef = useRef<HTMLDivElement>(null);
 
   const { data: gazeData } = useQuery<GazeData[]>({
-    queryKey: ['/api/sessions/current/gaze'],
+    queryKey: ['gaze-data'],
+    queryFn: () => fetchApi('api/sessions/current/gaze'),
     refetchInterval: 1000,
   });
 
