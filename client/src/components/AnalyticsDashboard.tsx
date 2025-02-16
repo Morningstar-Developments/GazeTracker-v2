@@ -6,16 +6,18 @@ import type { GazeData } from '../types/gazeData';
 export default function AnalyticsDashboard() {
   const confidenceChartRef = useRef<SVGSVGElement>(null);
   const headPoseChartRef = useRef<SVGSVGElement>(null);
+  const fixationChartRef = useRef<SVGSVGElement>(null);
+  const metricsRef = useRef<HTMLDivElement>(null);
 
   const { data: gazeData } = useQuery<GazeData[]>({
     queryKey: ['/api/sessions/current/gaze'],
     refetchInterval: 1000,
   });
 
+  // Confidence Chart
   useEffect(() => {
     if (!gazeData?.length || !confidenceChartRef.current) return;
 
-    // Confidence Chart
     const width = 400;
     const height = 200;
     const margin = { top: 20, right: 20, bottom: 30, left: 40 };
@@ -64,10 +66,10 @@ export default function AnalyticsDashboard() {
       .text('Confidence');
   }, [gazeData]);
 
+  // Head Pose Chart
   useEffect(() => {
     if (!gazeData?.length || !headPoseChartRef.current) return;
 
-    // Head Pose Chart
     const width = 400;
     const height = 200;
     const margin = { top: 20, right: 20, bottom: 30, left: 40 };
@@ -113,7 +115,6 @@ export default function AnalyticsDashboard() {
       .attr('transform', `translate(${margin.left},0)`)
       .call(d3.axisLeft(y));
 
-    // Legend
     const legend = svg.append('g')
       .attr('transform', `translate(${width - 100},${margin.top})`);
 
@@ -142,9 +143,113 @@ export default function AnalyticsDashboard() {
       .text('Pitch');
   }, [gazeData]);
 
+  // Fixation Chart
+  useEffect(() => {
+    if (!gazeData?.length || !fixationChartRef.current) return;
+
+    const width = 400;
+    const height = 200;
+    const margin = { top: 20, right: 20, bottom: 30, left: 40 };
+
+    const svg = d3.select(fixationChartRef.current);
+    svg.selectAll('*').remove();
+
+    const x = d3.scaleLinear()
+      .domain([0, gazeData.length])
+      .range([margin.left, width - margin.right]);
+
+    const y = d3.scaleLinear()
+      .domain([0, d3.max(gazeData, d => d.fixationDuration) || 1000])
+      .range([height - margin.bottom, margin.top]);
+
+    const fixationLine = d3.line<GazeData>()
+      .x((d, i) => x(i))
+      .y(d => y(d.fixationDuration || 0));
+
+    svg.append('path')
+      .datum(gazeData)
+      .attr('fill', 'none')
+      .attr('stroke', 'green')
+      .attr('stroke-width', 1.5)
+      .attr('d', fixationLine);
+
+    svg.append('g')
+      .attr('transform', `translate(0,${height - margin.bottom})`)
+      .call(d3.axisBottom(x).ticks(5));
+
+    svg.append('g')
+      .attr('transform', `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y));
+
+    svg.append('text')
+      .attr('x', width / 2)
+      .attr('y', height - 5)
+      .attr('text-anchor', 'middle')
+      .text('Time');
+
+    svg.append('text')
+      .attr('transform', 'rotate(-90)')
+      .attr('x', -height / 2)
+      .attr('y', 15)
+      .attr('text-anchor', 'middle')
+      .text('Fixation Duration (ms)');
+  }, [gazeData]);
+
+  // Live Metrics
+  useEffect(() => {
+    if (!gazeData?.length || !metricsRef.current) return;
+
+    const lastData = gazeData[gazeData.length - 1];
+    const avgConfidence = d3.mean(gazeData, d => d.confidence) || 0;
+    const avgFixation = d3.mean(gazeData, d => d.fixationDuration) || 0;
+
+    const metricsHtml = `
+      <div class="metric">
+        <label>Session Time:</label>
+        <span>${lastData.sessionTimeFormatted}</span>
+      </div>
+      <div class="metric">
+        <label>Current Time:</label>
+        <span>${lastData.formattedTime}</span>
+      </div>
+      <div class="metric">
+        <label>Date:</label>
+        <span>${lastData.formattedDate}</span>
+      </div>
+      <div class="metric">
+        <label>Blink Rate:</label>
+        <span>${(lastData.blinkRate || 0).toFixed(1)} blinks/min</span>
+      </div>
+      <div class="metric">
+        <label>Avg Confidence:</label>
+        <span>${(avgConfidence * 100).toFixed(1)}%</span>
+      </div>
+      <div class="metric">
+        <label>Avg Fixation:</label>
+        <span>${avgFixation.toFixed(0)}ms</span>
+      </div>
+      <div class="metric">
+        <label>Tracking State:</label>
+        <span>${getTrackingState(lastData.state)}</span>
+      </div>
+    `;
+
+    metricsRef.current.innerHTML = metricsHtml;
+  }, [gazeData]);
+
+  function getTrackingState(state?: number): string {
+    switch (state) {
+      case 0: return '✅ Valid';
+      case -1: return '❌ Face Lost';
+      case 1: return '⚠️ Uncalibrated';
+      default: return '❓ Unknown';
+    }
+  }
+
   return (
     <div className="analytics-dashboard">
       <h2>Live Analytics</h2>
+      <div ref={metricsRef} className="metrics-container" />
       <div className="charts-container">
         <div className="chart">
           <h3>Gaze Confidence</h3>
@@ -153,6 +258,10 @@ export default function AnalyticsDashboard() {
         <div className="chart">
           <h3>Head Pose</h3>
           <svg ref={headPoseChartRef} width="400" height="200" />
+        </div>
+        <div className="chart">
+          <h3>Fixation Duration</h3>
+          <svg ref={fixationChartRef} width="400" height="200" />
         </div>
       </div>
     </div>

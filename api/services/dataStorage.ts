@@ -12,6 +12,11 @@ export class DataStorageService {
   private currentSession: GazeData[] = [];
   private sessionConfig: SessionConfig | null = null;
   private outputDir: string;
+  private lastFixationStart: number = 0;
+  private lastGazePoint: GazeData | null = null;
+  private blinkCount: number = 0;
+  private lastBlinkTime: number = 0;
+  private sessionStartTime: number = 0;
 
   constructor() {
     this.outputDir = path.join(__dirname, '../../data');
@@ -23,10 +28,78 @@ export class DataStorageService {
   initializeSession(config: SessionConfig) {
     this.sessionConfig = config;
     this.currentSession = [];
+    this.lastFixationStart = 0;
+    this.lastGazePoint = null;
+    this.blinkCount = 0;
+    this.lastBlinkTime = Date.now();
+    this.sessionStartTime = Date.now();
+  }
+
+  private formatTime(timestamp: number): { formattedTime: string, formattedDate: string } {
+    const date = new Date(timestamp);
+    return {
+      formattedTime: format(date, 'HH:mm:ss'),
+      formattedDate: format(date, 'MM/dd/yyyy')
+    };
+  }
+
+  private formatSessionTime(sessionTime: number): string {
+    const minutes = Math.floor(sessionTime / 60000);
+    const seconds = Math.floor((sessionTime % 60000) / 1000);
+    const milliseconds = sessionTime % 1000;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
+  }
+
+  private calculateMetrics(data: GazeData): GazeData {
+    const now = Date.now();
+    const enrichedData = { ...data };
+    const sessionTime = now - this.sessionStartTime;
+    const { formattedTime, formattedDate } = this.formatTime(now);
+
+    // Add timestamps
+    enrichedData.timestamp = now;
+    (enrichedData as any).sessionTime = sessionTime;
+    (enrichedData as any).formattedTime = formattedTime;
+    (enrichedData as any).formattedDate = formattedDate;
+    (enrichedData as any).sessionTimeFormatted = this.formatSessionTime(sessionTime);
+
+    // Calculate fixation duration
+    if (this.lastGazePoint) {
+      const distance = Math.sqrt(
+        Math.pow((data.x - this.lastGazePoint.x), 2) + 
+        Math.pow((data.y - this.lastGazePoint.y), 2)
+      );
+      if (distance < 30) {
+        (enrichedData as any).fixationDuration = now - this.lastFixationStart;
+      } else {
+        this.lastFixationStart = now;
+        (enrichedData as any).saccadeLength = distance;
+      }
+
+      enrichedData.gazeDistance = distance;
+    } else {
+      this.lastFixationStart = now;
+    }
+
+    // Detect blinks
+    if (data.confidence && data.confidence < 0.1) {
+      if (now - this.lastBlinkTime > 300) {
+        this.blinkCount++;
+        this.lastBlinkTime = now;
+      }
+    }
+
+    // Calculate blink rate
+    const sessionDuration = (now - this.sessionStartTime) / 1000 / 60;
+    enrichedData.blinkRate = this.blinkCount / Math.max(sessionDuration, 1/60);
+
+    this.lastGazePoint = data;
+    return enrichedData;
   }
 
   addGazeData(data: GazeData) {
-    this.currentSession.push(data);
+    const enrichedData = this.calculateMetrics(data);
+    this.currentSession.push(enrichedData);
   }
 
   getCurrentSession() {
@@ -45,34 +118,42 @@ export class DataStorageService {
 
     const headers = [
       'timestamp',
-      'x',
-      'y',
+      'sessionTime',
+      'formattedTime',
+      'formattedDate',
+      'sessionTimeFormatted',
+      'x', 'y',
       'confidence',
-      'pupilD',
-      'docX',
-      'docY',
-      'HeadX',
-      'HeadY',
-      'HeadZ',
-      'HeadYaw',
-      'HeadPitch',
-      'HeadRoll'
+      'state',
+      'pupilD', 'pupilX', 'pupilY',
+      'docX', 'docY',
+      'screenX', 'screenY',
+      'HeadX', 'HeadY', 'HeadZ',
+      'HeadYaw', 'HeadPitch', 'HeadRoll',
+      'fixationDuration',
+      'saccadeLength',
+      'blinkRate',
+      'gazeDistance'
     ].join(',');
 
     const rows = this.currentSession.map(data => [
       data.timestamp,
-      data.x,
-      data.y,
+      data.sessionTime,
+      data.formattedTime,
+      data.formattedDate,
+      data.sessionTimeFormatted,
+      data.x, data.y,
       data.confidence || '',
-      data.pupilD || '',
-      data.docX || '',
-      data.docY || '',
-      data.HeadX || '',
-      data.HeadY || '',
-      data.HeadZ || '',
-      data.HeadYaw || '',
-      data.HeadPitch || '',
-      data.HeadRoll || ''
+      data.state || '',
+      data.pupilD || '', data.pupilX || '', data.pupilY || '',
+      data.docX || '', data.docY || '',
+      data.screenX || '', data.screenY || '',
+      data.HeadX || '', data.HeadY || '', data.HeadZ || '',
+      data.HeadYaw || '', data.HeadPitch || '', data.HeadRoll || '',
+      data.fixationDuration || '',
+      data.saccadeLength || '',
+      data.blinkRate || '',
+      data.gazeDistance || ''
     ].join(','));
 
     const csvContent = [headers, ...rows].join('\n');
@@ -84,5 +165,10 @@ export class DataStorageService {
   clearSession() {
     this.currentSession = [];
     this.sessionConfig = null;
+    this.lastFixationStart = 0;
+    this.lastGazePoint = null;
+    this.blinkCount = 0;
+    this.lastBlinkTime = 0;
+    this.sessionStartTime = 0;
   }
 } 
