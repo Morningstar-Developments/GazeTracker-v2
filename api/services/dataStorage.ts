@@ -20,9 +20,13 @@ export class DataStorageService {
 
   constructor() {
     this.outputDir = path.join(__dirname, '../../data');
+    // Create main data directory if it doesn't exist
     if (!fs.existsSync(this.outputDir)) {
       fs.mkdirSync(this.outputDir, { recursive: true });
     }
+    // Create pilot and live subdirectories
+    fs.mkdirSync(path.join(this.outputDir, 'pilot'), { recursive: true });
+    fs.mkdirSync(path.join(this.outputDir, 'live'), { recursive: true });
   }
 
   initializeSession(config: SessionConfig) {
@@ -112,9 +116,11 @@ export class DataStorageService {
     }
 
     const timestamp = format(new Date(), 'yyyyMMdd_HHmmss');
-    const sessionType = this.sessionConfig.isPilot ? 'pilot' : 'test';
-    const filename = `P${this.sessionConfig.participantId}_${sessionType}_${timestamp}.csv`;
-    const filepath = path.join(this.outputDir, filename);
+    const sessionType = this.sessionConfig.isPilot ? 'pilot' : 'live';
+    const paddedId = this.sessionConfig.participantId.padStart(3, '0');
+    const filename = `P${paddedId}_${sessionType}_${timestamp}.csv`;
+    const subDir = path.join(this.outputDir, sessionType);
+    const filepath = path.join(subDir, filename);
 
     const headers = [
       'timestamp',
