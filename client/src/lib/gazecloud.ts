@@ -1,97 +1,90 @@
-import type { GazeData } from '../types/gazeData';
+import { GazeData } from '../types/gazeData';
 
 declare global {
   interface Window {
     GazeCloudAPI: {
       StartEyeTracking: () => void;
       StopEyeTracking: () => void;
-      OnResult: (data: GazeData) => void;
+      OnResult: (data: any) => void;
       OnCalibrationComplete: () => void;
-      OnCamDenied: () => void;
-      OnError: (msg: string) => void;
-      UseClickRecalibration: boolean;
+      OnError: (error: any) => void;
     };
   }
 }
 
-export function initGazeCloud() {
-  return new Promise<void>((resolve, reject) => {
-    try {
-      const script = document.createElement("script");
-      script.src = "https://api.gazerecorder.com/GazeCloudAPI.js";
-      script.async = true;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Failed to load GazeCloudAPI"));
-      document.body.appendChild(script);
-      console.log("✅ GazeCloudAPI Loaded Successfully");
-    } catch (error) {
-      console.error("❌ GazeCloudAPI Load Error:", error);
-      reject(error);
-    }
+let isTracking = false;
+let onGazeData: ((data: GazeData) => void) | null = null;
+let onCalibrationComplete: (() => void) | null = null;
+
+export const initGazeCloud = async () => {
+  // Load GazeCloud API script
+  const script = document.createElement('script');
+  script.src = 'https://api.gazerecorder.com/GazeCloudAPI.js';
+  script.async = true;
+  
+  await new Promise((resolve, reject) => {
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
   });
-}
 
-export function startTracking(
-  onGazeData: (data: GazeData) => void,
-  options = {
-    useClickRecalibration: true
-  }
-) {
-  try {
-    if (!window.GazeCloudAPI) throw new Error("GazeCloudAPI is not initialized.");
-    
-    window.GazeCloudAPI.OnResult = (data: any) => {
-      const gazeData: GazeData = {
-        x: data.docX || data.x,
-        y: data.docY || data.y,
-        timestamp: Date.now(),
-        confidence: data.confidence,
-        sessionTime: Date.now(),
-        formattedTime: new Date().toLocaleTimeString(),
-        formattedDate: new Date().toLocaleDateString(),
-        sessionTimeFormatted: new Date().toLocaleString(),
-        pupilD: data.pupilD || data.PupilD,
-        docX: data.docX,
-        docY: data.docY,
-        HeadX: data.HeadX,
-        HeadY: data.HeadY,
-        HeadZ: data.HeadZ,
-        HeadYaw: data.HeadYaw,
-        HeadPitch: data.HeadPitch,
-        HeadRoll: data.HeadRoll
-      };
-      onGazeData(gazeData);
-    };
+  // Initialize GazeCloud handlers
+  window.GazeCloudAPI.OnResult = handleGazeData;
+  window.GazeCloudAPI.OnCalibrationComplete = handleCalibrationComplete;
+  window.GazeCloudAPI.OnError = handleError;
+};
 
-    window.GazeCloudAPI.UseClickRecalibration = options.useClickRecalibration;
-    
-    window.GazeCloudAPI.OnCalibrationComplete = () => {
-      console.log("✅ Calibration Complete");
-    };
-    
-    window.GazeCloudAPI.OnCamDenied = () => {
-      console.error("❌ Camera Access Denied");
-    };
-    
-    window.GazeCloudAPI.OnError = (msg) => {
-      console.error("❌ GazeCloud Error:", msg);
-    };
-    
+export const startTracking = (
+  gazeCallback: (data: GazeData) => void,
+  calibrationCallback: () => void
+) => {
+  if (!isTracking) {
+    onGazeData = gazeCallback;
+    onCalibrationComplete = calibrationCallback;
     window.GazeCloudAPI.StartEyeTracking();
-    console.log("✅ Gaze Tracking Started");
-  } catch (error) {
-    console.error("❌ Gaze Tracking Error:", error);
-    throw error;
+    isTracking = true;
   }
-}
+};
 
-export function stopTracking() {
-  try {
-    if (!window.GazeCloudAPI) throw new Error("GazeCloudAPI is not initialized.");
+export const stopTracking = () => {
+  if (isTracking) {
     window.GazeCloudAPI.StopEyeTracking();
-    console.log("✅ Gaze Tracking Stopped");
-  } catch (error) {
-    console.error("❌ Gaze Stopping Error:", error);
-    throw error;
+    isTracking = false;
+    onGazeData = null;
+    onCalibrationComplete = null;
   }
-} 
+};
+
+const handleGazeData = (gazeResponse: any) => {
+  if (onGazeData) {
+    const gazeData: GazeData = {
+      x: gazeResponse.docX,
+      y: gazeResponse.docY,
+      timestamp: Date.now(),
+      confidence: gazeResponse.state, // 0 to 1
+      pupilD: gazeResponse.diameter,
+      docX: gazeResponse.docX,
+      docY: gazeResponse.docY,
+      HeadX: gazeResponse.HeadX,
+      HeadY: gazeResponse.HeadY,
+      HeadZ: gazeResponse.HeadZ,
+      HeadYaw: gazeResponse.HeadYaw,
+      HeadPitch: gazeResponse.HeadPitch,
+      HeadRoll: gazeResponse.HeadRoll
+    };
+    onGazeData(gazeData);
+  }
+};
+
+const handleCalibrationComplete = () => {
+  if (onCalibrationComplete) {
+    onCalibrationComplete();
+  }
+};
+
+const handleError = (error: any) => {
+  console.error('GazeCloud Error:', error);
+  isTracking = false;
+  onGazeData = null;
+  onCalibrationComplete = null;
+};

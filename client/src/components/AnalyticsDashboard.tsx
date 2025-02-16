@@ -171,7 +171,7 @@ export default function AnalyticsDashboard() {
 
     const avgFixationLine = d3.line<GazeData>()
       .x((d, i) => x(i))
-      .y(d => y(d.avgFixationDuration || 0));
+      .y(d => y(d.fixationDuration || 0));
 
     svg.append('path')
       .datum(gazeData)
@@ -306,7 +306,7 @@ export default function AnalyticsDashboard() {
           <h3>Eye Tracking Quality</h3>
           <div class="metric">
             <label>Current Confidence:</label>
-            <span>${(lastData.confidence || 0).toFixed(2) * 100}%</span>
+            <span>${((lastData.confidence || 0) * 100).toFixed(2)}%</span>
           </div>
           <div class="metric">
             <label>Avg Confidence:</label>

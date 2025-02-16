@@ -3,10 +3,10 @@ export interface GazeData {
   x: number;
   y: number;
   timestamp: number;         // Absolute timestamp (Unix timestamp)
-  sessionTime: number;       // Time since session start in milliseconds
-  formattedTime: string;     // Formatted absolute time (HH:mm:ss)
-  formattedDate: string;     // Formatted date (MM/DD/YYYY)
-  sessionTimeFormatted: string; // Formatted session time (mm:ss.SSS)
+  sessionTime?: number;       // Time since session start in milliseconds
+  formattedTime?: string;     // Formatted absolute time (HH:mm:ss)
+  formattedDate?: string;     // Formatted date (MM/DD/YYYY)
+  sessionTimeFormatted?: string; // Formatted session time (mm:ss.SSS)
   
   // Eye tracking confidence and quality
   confidence?: number;
@@ -33,7 +33,17 @@ export interface GazeData {
   
   // Additional eye tracking metrics
   fixationDuration?: number;
+  avgFixationDuration?: number;
+  fixationsPerMinute?: number;
   saccadeLength?: number;
-  blinkRate?: number;
+  avgSaccadeLength?: number;
+  saccadesPerMinute?: number;
   gazeDistance?: number;
+  gazeVelocity?: number;
+  blinkRate?: number;
+}
+
+export interface SessionConfig {
+  participantId: string;
+  isPilot: boolean;
 } 
