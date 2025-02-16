@@ -22,7 +22,12 @@ export interface GazeData {
   HeadPitch?: number;
   HeadRoll?: number;
   fixationDuration?: number;
+  avgFixationDuration?: number;
+  fixationsPerMinute?: number;
   saccadeLength?: number;
-  blinkRate?: number;
+  avgSaccadeLength?: number;
+  saccadesPerMinute?: number;
   gazeDistance?: number;
+  gazeVelocity?: number;
+  blinkRate?: number;
 } 

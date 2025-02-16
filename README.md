@@ -1,5 +1,39 @@
 # Real-Time online Eye-Tracking
 
+## Quick Start
+
+To start the development environment with all necessary services:
+
+```bash
+npm run start:dev
+```
+
+This command will:
+1. Install all dependencies (both client and server)
+2. Start the server with auto-reload
+3. Start the client development server
+4. Handle automatic port selection if default ports are in use
+
+## Development Commands
+
+- `npm run dev` - Start both client and server in development mode
+- `npm run dev:server` - Start only the server with auto-reload
+- `npm run dev:client` - Start only the client development server
+- `npm run dev:setup` - Install all dependencies
+- `npm run dev:clean` - Remove all node_modules
+- `npm run dev:reset` - Clean and reinstall all dependencies
+- `npm run build` - Build the client for production
+
+## Port Configuration
+
+The application automatically handles port selection:
+- Server default port: 3001 (will automatically find next available port if in use)
+- Client default port: 3000
+
+You can configure the ports using environment variables:
+- Server: `PORT` environment variable
+- Client: `PORT` environment variable (when starting the client)
+
 ## GazeCloudAPI Integration details
 
 Register origin domain address of your web page: <https://api.gazerecorder.com/register/>

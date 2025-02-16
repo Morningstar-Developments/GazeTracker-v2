@@ -17,6 +17,10 @@ export class DataStorageService {
   private blinkCount: number = 0;
   private lastBlinkTime: number = 0;
   private sessionStartTime: number = 0;
+  private fixationCount: number = 0;
+  private totalFixationDuration: number = 0;
+  private saccadeCount: number = 0;
+  private totalSaccadeLength: number = 0;
 
   constructor() {
     this.outputDir = path.join(__dirname, '../../data');
@@ -37,13 +41,17 @@ export class DataStorageService {
     this.blinkCount = 0;
     this.lastBlinkTime = Date.now();
     this.sessionStartTime = Date.now();
+    this.fixationCount = 0;
+    this.totalFixationDuration = 0;
+    this.saccadeCount = 0;
+    this.totalSaccadeLength = 0;
   }
 
   private formatTime(timestamp: number): { formattedTime: string, formattedDate: string } {
     const date = new Date(timestamp);
     return {
-      formattedTime: format(date, 'HH:mm:ss'),
-      formattedDate: format(date, 'MM/dd/yyyy')
+      formattedTime: format(date, 'HH:mm:ss.SSS'),
+      formattedDate: format(date, 'yyyy-MM-dd')
     };
   }
 
@@ -62,25 +70,39 @@ export class DataStorageService {
 
     // Add timestamps
     enrichedData.timestamp = now;
-    (enrichedData as any).sessionTime = sessionTime;
-    (enrichedData as any).formattedTime = formattedTime;
-    (enrichedData as any).formattedDate = formattedDate;
-    (enrichedData as any).sessionTimeFormatted = this.formatSessionTime(sessionTime);
+    enrichedData.sessionTime = sessionTime;
+    enrichedData.formattedTime = formattedTime;
+    enrichedData.formattedDate = formattedDate;
+    enrichedData.sessionTimeFormatted = this.formatSessionTime(sessionTime);
 
-    // Calculate fixation duration
+    // Calculate fixation and saccade metrics
     if (this.lastGazePoint) {
       const distance = Math.sqrt(
         Math.pow((data.x - this.lastGazePoint.x), 2) + 
         Math.pow((data.y - this.lastGazePoint.y), 2)
       );
-      if (distance < 30) {
-        (enrichedData as any).fixationDuration = now - this.lastFixationStart;
+
+      const FIXATION_THRESHOLD = 30;
+      if (distance < FIXATION_THRESHOLD) {
+        const fixationDuration = now - this.lastFixationStart;
+        enrichedData.fixationDuration = fixationDuration;
+        this.totalFixationDuration += fixationDuration;
+        
+        if (!this.lastGazePoint.fixationDuration) {
+          this.fixationCount++;
+        }
       } else {
         this.lastFixationStart = now;
-        (enrichedData as any).saccadeLength = distance;
+        enrichedData.saccadeLength = distance;
+        this.saccadeCount++;
+        this.totalSaccadeLength += distance;
       }
 
       enrichedData.gazeDistance = distance;
+      
+      // Calculate velocities
+      const timeElapsed = now - this.lastGazePoint.timestamp;
+      enrichedData.gazeVelocity = distance / (timeElapsed / 1000); // pixels per second
     } else {
       this.lastFixationStart = now;
     }
@@ -93,11 +115,15 @@ export class DataStorageService {
       }
     }
 
-    // Calculate blink rate
-    const sessionDuration = (now - this.sessionStartTime) / 1000 / 60;
-    enrichedData.blinkRate = this.blinkCount / Math.max(sessionDuration, 1/60);
+    // Calculate aggregate metrics
+    const sessionDuration = Math.max((now - this.sessionStartTime) / 1000 / 60, 1/60);
+    enrichedData.blinkRate = this.blinkCount / sessionDuration;
+    enrichedData.avgFixationDuration = this.totalFixationDuration / Math.max(this.fixationCount, 1);
+    enrichedData.fixationsPerMinute = this.fixationCount / sessionDuration;
+    enrichedData.avgSaccadeLength = this.totalSaccadeLength / Math.max(this.saccadeCount, 1);
+    enrichedData.saccadesPerMinute = this.saccadeCount / sessionDuration;
 
-    this.lastGazePoint = data;
+    this.lastGazePoint = enrichedData;
     return enrichedData;
   }
 
@@ -123,43 +149,105 @@ export class DataStorageService {
     const filepath = path.join(subDir, filename);
 
     const headers = [
+      // Time-related columns
       'timestamp',
       'sessionTime',
       'formattedTime',
       'formattedDate',
       'sessionTimeFormatted',
-      'x', 'y',
+      
+      // Basic gaze data
+      'x',
+      'y',
       'confidence',
       'state',
-      'pupilD', 'pupilX', 'pupilY',
-      'docX', 'docY',
-      'screenX', 'screenY',
-      'HeadX', 'HeadY', 'HeadZ',
-      'HeadYaw', 'HeadPitch', 'HeadRoll',
+      
+      // Pupil data
+      'pupilD',
+      'pupilX',
+      'pupilY',
+      
+      // Document/Screen coordinates
+      'docX',
+      'docY',
+      'screenX',
+      'screenY',
+      
+      // Head pose data
+      'HeadX',
+      'HeadY',
+      'HeadZ',
+      'HeadYaw',
+      'HeadPitch',
+      'HeadRoll',
+      
+      // Fixation metrics
       'fixationDuration',
+      'avgFixationDuration',
+      'fixationsPerMinute',
+      
+      // Saccade metrics
       'saccadeLength',
-      'blinkRate',
-      'gazeDistance'
+      'avgSaccadeLength',
+      'saccadesPerMinute',
+      
+      // Movement metrics
+      'gazeDistance',
+      'gazeVelocity',
+      
+      // Blink metrics
+      'blinkRate'
     ].join(',');
 
     const rows = this.currentSession.map(data => [
+      // Time-related data
       data.timestamp,
       data.sessionTime,
       data.formattedTime,
       data.formattedDate,
       data.sessionTimeFormatted,
-      data.x, data.y,
-      data.confidence || '',
+      
+      // Basic gaze data
+      data.x.toFixed(2),
+      data.y.toFixed(2),
+      (data.confidence || 0).toFixed(3),
       data.state || '',
-      data.pupilD || '', data.pupilX || '', data.pupilY || '',
-      data.docX || '', data.docY || '',
-      data.screenX || '', data.screenY || '',
-      data.HeadX || '', data.HeadY || '', data.HeadZ || '',
-      data.HeadYaw || '', data.HeadPitch || '', data.HeadRoll || '',
-      data.fixationDuration || '',
-      data.saccadeLength || '',
-      data.blinkRate || '',
-      data.gazeDistance || ''
+      
+      // Pupil data
+      (data.pupilD || '').toString(),
+      (data.pupilX || '').toString(),
+      (data.pupilY || '').toString(),
+      
+      // Document/Screen coordinates
+      (data.docX || '').toString(),
+      (data.docY || '').toString(),
+      (data.screenX || '').toString(),
+      (data.screenY || '').toString(),
+      
+      // Head pose data
+      (data.HeadX || '').toString(),
+      (data.HeadY || '').toString(),
+      (data.HeadZ || '').toString(),
+      (data.HeadYaw || '').toString(),
+      (data.HeadPitch || '').toString(),
+      (data.HeadRoll || '').toString(),
+      
+      // Fixation metrics
+      (data.fixationDuration || '').toString(),
+      (data.avgFixationDuration || '').toString(),
+      (data.fixationsPerMinute || '').toString(),
+      
+      // Saccade metrics
+      (data.saccadeLength || '').toString(),
+      (data.avgSaccadeLength || '').toString(),
+      (data.saccadesPerMinute || '').toString(),
+      
+      // Movement metrics
+      (data.gazeDistance || '').toString(),
+      (data.gazeVelocity || '').toString(),
+      
+      // Blink metrics
+      (data.blinkRate || '').toString()
     ].join(','));
 
     const csvContent = [headers, ...rows].join('\n');
@@ -176,5 +264,9 @@ export class DataStorageService {
     this.blinkCount = 0;
     this.lastBlinkTime = 0;
     this.sessionStartTime = 0;
+    this.fixationCount = 0;
+    this.totalFixationDuration = 0;
+    this.saccadeCount = 0;
+    this.totalSaccadeLength = 0;
   }
 } 
