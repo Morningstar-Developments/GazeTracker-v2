@@ -13,17 +13,25 @@ interface RecordingSessionProps {
   startTime: number | null;
   gazeData: GazeData[];
   onExport: () => void;
+  isPilot: boolean;
+  participantId: string;
+  onDiscard?: () => void;
 }
 
 const RecordingSession: React.FC<RecordingSessionProps> = ({
   isRecording,
   startTime,
   gazeData,
-  onExport
+  onExport,
+  isPilot,
+  participantId,
+  onDiscard
 }) => {
   const [elapsed, setElapsed] = useState<string>('00:00:00');
   const [isMinimized, setIsMinimized] = useState(false);
   const [showExportOptions, setShowExportOptions] = useState(false);
+  const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
+  const [lastGazePoint, setLastGazePoint] = useState<GazeData | null>(null);
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
@@ -51,14 +59,20 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
     };
   }, [isRecording, startTime]);
 
+  useEffect(() => {
+    if (gazeData.length > 0) {
+      setLastGazePoint(gazeData[gazeData.length - 1]);
+    }
+  }, [gazeData]);
+
   const handleExport = (format: string) => {
     const sessionData = {
-      sessionInfo: {
-        startTime,
-        endTime: Date.now(),
-        duration: startTime ? Date.now() - startTime : 0,
-        totalDataPoints: gazeData.length
-      },
+      participantId,
+      sessionType: isPilot ? 'pilot' : 'live',
+      startTime: startTime ? new Date(startTime).toISOString() : null,
+      endTime: Date.now() ? new Date(Date.now()).toISOString() : null,
+      duration: startTime ? Date.now() - startTime : 0,
+      totalDataPoints: gazeData.length,
       gazeData
     };
 
@@ -83,177 +97,132 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
     onExport();
   };
 
-  if (!isRecording) return null;
+  const handleDiscard = () => {
+    setShowDiscardPrompt(false);
+    if (onDiscard) {
+      onDiscard();
+    }
+  };
 
-  return (
-    <div
-      className="recording-session"
-      style={{
-        position: 'fixed',
-        right: '20px',
-        bottom: '20px',
-        backgroundColor: 'white',
-        borderRadius: '8px',
-        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
-        padding: isMinimized ? '10px' : '20px',
-        width: isMinimized ? 'auto' : '300px',
-        transition: 'all 0.3s ease',
-        zIndex: 9999,
-        border: '1px solid #ddd'
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: isMinimized ? '0' : '15px'
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px'
-          }}
-        >
-          <div
-            style={{
-              width: '10px',
-              height: '10px',
-              borderRadius: '50%',
-              backgroundColor: '#ff4444',
-              animation: 'pulse 1.5s infinite'
-            }}
-          />
-          <span style={{ fontWeight: 'bold' }}>Recording</span>
+  if (!isRecording) {
+    if (gazeData.length > 0) {
+      return (
+        <div className="session-end-prompt" style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          backgroundColor: 'white',
+          padding: '20px',
+          borderRadius: '8px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+          zIndex: 1000
+        }}>
+          <h3>Session Complete</h3>
+          <p>Would you like to export or discard the recorded data?</p>
+          <p>Total data points: {gazeData.length}</p>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+            <button onClick={() => setShowExportOptions(true)} style={{
+              padding: '8px 16px',
+              backgroundColor: '#4CAF50',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}>Export Data</button>
+            <button onClick={() => setShowDiscardPrompt(true)} style={{
+              padding: '8px 16px',
+              backgroundColor: '#f44336',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}>Discard Data</button>
+          </div>
+
+          {showExportOptions && (
+            <div style={{ marginTop: '20px' }}>
+              <h4>Select Export Format:</h4>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button onClick={() => handleExport('json')}>JSON</button>
+                <button onClick={() => handleExport('csv')}>CSV</button>
+                <button onClick={() => handleExport('xlsx')}>Excel</button>
+                <button onClick={() => handleExport('docx')}>Word</button>
+                <button onClick={() => handleExport('md')}>Markdown</button>
+              </div>
+            </div>
+          )}
+
+          {showDiscardPrompt && (
+            <div style={{ marginTop: '20px' }}>
+              <p>Are you sure you want to discard this session's data?</p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={handleDiscard} style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#f44336',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}>Yes, Discard</button>
+                <button onClick={() => setShowDiscardPrompt(false)} style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#9e9e9e',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}>Cancel</button>
+              </div>
+            </div>
+          )}
         </div>
-        <button
-          onClick={() => setIsMinimized(!isMinimized)}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: '5px'
-          }}
-        >
+      );
+    }
+    return null;
+  }
+
+  const sessionWindow = (
+    <div className={`recording-session ${isMinimized ? 'minimized' : ''}`} style={{
+      position: 'fixed',
+      right: '20px',
+      bottom: isMinimized ? '20px' : '50%',
+      transform: isMinimized ? 'none' : 'translateY(50%)',
+      backgroundColor: 'white',
+      padding: '15px',
+      borderRadius: '8px',
+      boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+      width: isMinimized ? '200px' : '300px',
+      transition: 'all 0.3s ease'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <span style={{ fontWeight: 'bold' }}>Recording Session</span>
+        <button onClick={() => setIsMinimized(!isMinimized)} style={{
+          border: 'none',
+          background: 'none',
+          cursor: 'pointer',
+          padding: '4px'
+        }}>
           {isMinimized ? '□' : '−'}
         </button>
       </div>
 
-      {!isMinimized && (
-        <>
-          <div
-            style={{
-              marginBottom: '15px',
-              padding: '10px',
-              backgroundColor: '#f5f5f5',
-              borderRadius: '4px',
-              textAlign: 'center'
-            }}
-          >
-            <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{elapsed}</div>
-            <div style={{ fontSize: '12px', color: '#666' }}>Duration</div>
-          </div>
-
-          <div
-            style={{
-              marginBottom: '15px',
-              padding: '10px',
-              backgroundColor: '#f5f5f5',
-              borderRadius: '4px'
-            }}
-          >
-            <div style={{ marginBottom: '5px', fontSize: '12px', color: '#666' }}>
-              Data Points: {gazeData.length}
-            </div>
-            <div style={{ fontSize: '12px', color: '#666' }}>
-              Last Position: {gazeData.length > 0
-                ? `(${Math.round(gazeData[gazeData.length - 1].x)}, ${Math.round(gazeData[gazeData.length - 1].y)})`
-                : 'N/A'}
-            </div>
-          </div>
-
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowExportOptions(!showExportOptions)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                backgroundColor: '#4CAF50',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                transition: 'background-color 0.3s'
-              }}
-            >
-              Export Session Data
-            </button>
-
-            {showExportOptions && (
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: '100%',
-                  left: 0,
-                  right: 0,
-                  backgroundColor: 'white',
-                  borderRadius: '4px',
-                  boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.1)',
-                  marginBottom: '5px',
-                  padding: '10px'
-                }}
-              >
-                {['JSON', 'CSV', 'XLSX', 'DOCX', 'Markdown'].map((format) => (
-                  <button
-                    key={format}
-                    onClick={() => handleExport(format.toLowerCase())}
-                    className="export-format-button"
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      marginBottom: '5px',
-                      backgroundColor: '#f5f5f5',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      transition: 'background-color 0.3s'
-                    }}
-                  >
-                    Export as {format}
-                  </button>
-                ))}
-              </div>
+      <div style={{ fontSize: isMinimized ? '12px' : '14px' }}>
+        <div>Time: {elapsed}</div>
+        <div>Data Points: {gazeData.length}</div>
+        {lastGazePoint && (
+          <div style={{ fontSize: '11px', marginTop: '5px' }}>
+            <div>Last Position: ({Math.round(lastGazePoint.x)}, {Math.round(lastGazePoint.y)})</div>
+            {lastGazePoint.confidence !== undefined && (
+              <div>Confidence: {(lastGazePoint.confidence * 100).toFixed(1)}%</div>
             )}
           </div>
-        </>
-      )}
-
-      <style>
-        {`
-          @keyframes pulse {
-            0% {
-              transform: scale(1);
-              opacity: 1;
-            }
-            50% {
-              transform: scale(1.2);
-              opacity: 0.7;
-            }
-            100% {
-              transform: scale(1);
-              opacity: 1;
-            }
-          }
-
-          .export-format-button:hover {
-            background-color: #e0e0e0 !important;
-          }
-        `}
-      </style>
+        )}
+      </div>
     </div>
   );
+
+  return sessionWindow;
 };
 
 export default RecordingSession; 

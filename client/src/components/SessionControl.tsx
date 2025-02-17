@@ -2,24 +2,65 @@ import React, { useState, useCallback } from 'react';
 import { startTracking, stopTracking } from '../lib/gazecloud';
 import type { GazeData } from '../types/gazeData';
 import RecordingSession from './RecordingSession';
+import SessionConfig, { SessionConfigData } from './SessionConfig';
+import { format } from 'date-fns';
+
+interface EnhancedGazeData extends GazeData {
+  participantId: string;
+  sessionType: 'pilot' | 'live';
+  formattedTime: string;
+  formattedDate: string;
+  sessionTime: number;
+  sessionTimeFormatted: string;
+}
 
 const SessionControl: React.FC = () => {
   const [isTracking, setIsTracking] = useState(false);
   const [calibrationComplete, setCalibrationComplete] = useState(false);
-  const [gazeData, setGazeData] = useState<GazeData[]>([]);
+  const [gazeData, setGazeData] = useState<EnhancedGazeData[]>([]);
   const [startTime, setStartTime] = useState<number | null>(null);
+  const [sessionConfig, setSessionConfig] = useState<SessionConfigData | null>(null);
+  const [debugLog, setDebugLog] = useState<string[]>([]);
 
   const handleGazeData = useCallback((data: GazeData) => {
-    setGazeData(prev => [...prev, data]);
-  }, []);
+    if (!startTime || !sessionConfig) return;
+
+    const now = new Date();
+    const sessionDuration = Date.now() - startTime;
+    
+    const enhancedData: EnhancedGazeData = {
+      ...data,
+      participantId: sessionConfig.participantId,
+      sessionType: sessionConfig.isPilot ? 'pilot' : 'live',
+      formattedTime: format(now, 'HH:mm:ss.SSS'),
+      formattedDate: format(now, 'yyyy-MM-dd'),
+      sessionTime: sessionDuration,
+      sessionTimeFormatted: format(sessionDuration, 'mm:ss.SSS')
+    };
+
+    setGazeData(prev => [...prev, enhancedData]);
+
+    if (sessionConfig.isPilot) {
+      setDebugLog(prev => [
+        ...prev,
+        `[${enhancedData.formattedTime}] Gaze position: (${Math.round(data.x)}, ${Math.round(data.y)}) | Confidence: ${(data.confidence || 0).toFixed(2)}`
+      ].slice(-100)); // Keep last 100 log entries
+    }
+  }, [startTime, sessionConfig]);
 
   const handleStartTracking = () => {
+    if (!sessionConfig) return;
+    
     setGazeData([]);
+    setDebugLog([]);
     setStartTime(Date.now());
     startTracking(
       handleGazeData,
       () => {
         setCalibrationComplete(true);
+        if (sessionConfig.isPilot) {
+          setDebugLog(prev => [...prev, `[${format(new Date(), 'HH:mm:ss.SSS')}] Calibration complete`]);
+        }
       }
     );
     setIsTracking(true);
@@ -29,6 +70,18 @@ const SessionControl: React.FC = () => {
     stopTracking();
     setIsTracking(false);
     setCalibrationComplete(false);
+    if (sessionConfig?.isPilot) {
+      setDebugLog(prev => [...prev, `[${format(new Date(), 'HH:mm:ss.SSS')}] Session stopped`]);
+    }
+  };
+
+  const handleDiscardSession = () => {
+    setGazeData([]);
+    setStartTime(null);
+    setDebugLog([]);
+    if (sessionConfig?.isPilot) {
+      setDebugLog(prev => [...prev, `[${format(new Date(), 'HH:mm:ss.SSS')}] Session data discarded`]);
+    }
   };
 
   const handleExport = () => {
@@ -56,54 +109,54 @@ const SessionControl: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  if (!sessionConfig) {
+    return <SessionConfig onConfigSubmit={setSessionConfig} />;
+  }
+
   return (
-    <div className="session-control" style={{ marginBottom: '20px' }}>
-      <h2>Gaze Tracking Session</h2>
-      <div className="button-group" style={{ marginTop: '10px' }}>
-        {!isTracking ? (
+    <div className="session-control" style={{ padding: '20px' }}>
+      <div style={{ marginBottom: '20px' }}>
+        <h2>Session Control</h2>
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
           <button
-            onClick={handleStartTracking}
+            onClick={isTracking ? handleStopTracking : handleStartTracking}
             style={{
               padding: '10px 20px',
-              backgroundColor: '#4CAF50',
+              backgroundColor: isTracking ? '#f44336' : '#4CAF50',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '16px'
+              cursor: 'pointer'
             }}
           >
-            Start Tracking
+            {isTracking ? 'Stop Recording' : 'Start Recording'}
           </button>
-        ) : (
-          <button
-            onClick={handleStopTracking}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#f44336',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '16px'
-            }}
-          >
-            Stop Tracking
-          </button>
-        )}
+        </div>
+        <div style={{ fontSize: '14px', color: '#666' }}>
+          <div>Participant ID: {sessionConfig.participantId}</div>
+          <div>Mode: {sessionConfig.isPilot ? 'Pilot' : 'Live'}</div>
+          {calibrationComplete && <div style={{ color: '#4CAF50' }}>✓ Calibration Complete</div>}
+        </div>
       </div>
-      {calibrationComplete && (
+
+      {sessionConfig.isPilot && debugLog.length > 0 && (
         <div
-          className="success-message"
+          className="debug-log"
           style={{
-            marginTop: '10px',
+            marginTop: '20px',
             padding: '10px',
-            backgroundColor: '#dff0d8',
-            color: '#3c763d',
-            borderRadius: '4px'
+            backgroundColor: '#f8f9fa',
+            borderRadius: '4px',
+            maxHeight: '200px',
+            overflowY: 'auto',
+            fontSize: '12px',
+            fontFamily: 'monospace'
           }}
         >
-          Calibration complete! Tracking in progress...
+          <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>Debug Log:</div>
+          {debugLog.map((log, index) => (
+            <div key={index} style={{ marginBottom: '4px' }}>{log}</div>
+          ))}
         </div>
       )}
 
@@ -112,6 +165,9 @@ const SessionControl: React.FC = () => {
         startTime={startTime}
         gazeData={gazeData}
         onExport={handleExport}
+        isPilot={sessionConfig.isPilot}
+        participantId={sessionConfig.participantId}
+        onDiscard={handleDiscardSession}
       />
     </div>
   );

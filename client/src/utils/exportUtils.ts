@@ -3,182 +3,158 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import Papa from 'papaparse';
 import type { GazeData } from '../types/gazeData';
+import { format } from 'date-fns';
+import { HeadingLevel } from 'docx';
 
 interface SessionData {
-  sessionInfo: {
-    startTime: number | null;
-    endTime: number;
-    duration: number;
-    totalDataPoints: number;
-  };
+  participantId: string;
+  sessionType: string;
+  startTime: string | null;
+  endTime: string | null;
+  duration: number;
+  totalDataPoints: number;
   gazeData: GazeData[];
 }
 
-export const exportToJSON = (data: SessionData): void => {
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: 'application/json'
+export const exportToJSON = (data: SessionData) => {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  saveAs(blob, `gaze-data-${data.participantId}-${data.sessionType}-${format(new Date(), 'yyyyMMdd-HHmmss')}.json`);
+};
+
+export const exportToCSV = (data: SessionData) => {
+  const csvData = Papa.unparse({
+    fields: ['timestamp', 'x', 'y', 'leftEye', 'rightEye', 'confidence', 'participantId', 'sessionType'],
+    data: data.gazeData.map(point => ({
+      timestamp: point.timestamp,
+      x: point.x,
+      y: point.y,
+      leftEye: JSON.stringify(point.leftEye),
+      rightEye: JSON.stringify(point.rightEye),
+      confidence: point.confidence,
+      participantId: data.participantId,
+      sessionType: data.sessionType
+    }))
   });
-  saveAs(blob, `gaze-tracking-session-${new Date().toISOString()}.json`);
+  const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+  saveAs(blob, `gaze-data-${data.participantId}-${data.sessionType}-${format(new Date(), 'yyyyMMdd-HHmmss')}.csv`);
 };
 
-export const exportToCSV = (data: SessionData): void => {
-  // Flatten gaze data for CSV format
-  const flattenedData = data.gazeData.map(point => ({
-    timestamp: point.timestamp,
-    x: point.x,
-    y: point.y,
-    docX: point.docX,
-    docY: point.docY,
-    confidence: point.confidence,
-    pupilD: point.pupilD,
-    HeadX: point.HeadX,
-    HeadY: point.HeadY,
-    HeadZ: point.HeadZ,
-    HeadYaw: point.HeadYaw,
-    HeadPitch: point.HeadPitch,
-    HeadRoll: point.HeadRoll
-  }));
-
-  const csv = Papa.unparse(flattenedData);
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  saveAs(blob, `gaze-tracking-session-${new Date().toISOString()}.csv`);
-};
-
-export const exportToXLSX = (data: SessionData): void => {
-  // Create workbook with multiple sheets
+export const exportToXLSX = (data: SessionData) => {
   const wb = XLSX.utils.book_new();
-
+  
   // Session Info Sheet
-  const sessionInfoData = [
-    ['Session Information'],
-    ['Start Time', new Date(data.sessionInfo.startTime || 0).toISOString()],
-    ['End Time', new Date(data.sessionInfo.endTime).toISOString()],
-    ['Duration (ms)', data.sessionInfo.duration],
-    ['Total Data Points', data.sessionInfo.totalDataPoints]
+  const sessionInfo = [
+    ['Participant ID', data.participantId],
+    ['Session Type', data.sessionType],
+    ['Start Time', data.startTime],
+    ['End Time', data.endTime],
+    ['Duration (ms)', data.duration],
+    ['Total Data Points', data.totalDataPoints]
   ];
-  const sessionWS = XLSX.utils.aoa_to_sheet(sessionInfoData);
+  const sessionWs = XLSX.utils.aoa_to_sheet(sessionInfo);
+  XLSX.utils.book_append_sheet(wb, sessionWs, 'Session Info');
 
   // Gaze Data Sheet
-  const gazeDataWS = XLSX.utils.json_to_sheet(data.gazeData);
+  const gazeDataArray = data.gazeData.map(point => [
+    point.timestamp,
+    point.x,
+    point.y,
+    JSON.stringify(point.leftEye),
+    JSON.stringify(point.rightEye),
+    point.confidence
+  ]);
+  gazeDataArray.unshift(['Timestamp', 'X', 'Y', 'Left Eye', 'Right Eye', 'Confidence']);
+  const gazeWs = XLSX.utils.aoa_to_sheet(gazeDataArray);
+  XLSX.utils.book_append_sheet(wb, gazeWs, 'Gaze Data');
 
-  // Add sheets to workbook
-  XLSX.utils.book_append_sheet(wb, sessionWS, 'Session Info');
-  XLSX.utils.book_append_sheet(wb, gazeDataWS, 'Gaze Data');
-
-  // Generate and save file
-  XLSX.writeFile(wb, `gaze-tracking-session-${new Date().toISOString()}.xlsx`);
+  XLSX.writeFile(wb, `gaze-data-${data.participantId}-${data.sessionType}-${format(new Date(), 'yyyyMMdd-HHmmss')}.xlsx`);
 };
 
-export const exportToDocx = async (data: SessionData): Promise<void> => {
+export const exportToDocx = (data: SessionData) => {
   const doc = new Document({
     sections: [{
-      properties: {},
       children: [
         new Paragraph({
           text: 'Gaze Tracking Session Report',
-          heading: 'Title'
+          heading: HeadingLevel.HEADING_1
         }),
-        new Paragraph({
-          text: `Generated on ${new Date().toLocaleString()}`,
-          style: 'Subtitle'
-        }),
-        new Paragraph({ text: '' }), // Spacing
-
-        // Session Information
-        new Paragraph({
-          text: 'Session Information',
-          heading: 'Heading1'
-        }),
+        new Paragraph({ text: '' }),
+        new Paragraph({ text: 'Session Information', heading: HeadingLevel.HEADING_2 }),
         new Table({
           rows: [
             new TableRow({
               children: [
-                new TableCell({ children: [new Paragraph('Start Time')] }),
-                new TableCell({ 
-                  children: [new Paragraph(new Date(data.sessionInfo.startTime || 0).toLocaleString())]
-                })
+                new TableCell({ children: [new Paragraph({ text: 'Participant ID' })] }),
+                new TableCell({ children: [new Paragraph({ text: data.participantId })] })
               ]
             }),
             new TableRow({
               children: [
-                new TableCell({ children: [new Paragraph('End Time')] }),
-                new TableCell({ 
-                  children: [new Paragraph(new Date(data.sessionInfo.endTime).toLocaleString())]
-                })
+                new TableCell({ children: [new Paragraph({ text: 'Session Type' })] }),
+                new TableCell({ children: [new Paragraph({ text: data.sessionType })] })
               ]
             }),
             new TableRow({
               children: [
-                new TableCell({ children: [new Paragraph('Duration')] }),
-                new TableCell({ 
-                  children: [new Paragraph(`${(data.sessionInfo.duration / 1000).toFixed(2)} seconds`)]
-                })
+                new TableCell({ children: [new Paragraph({ text: 'Start Time' })] }),
+                new TableCell({ children: [new Paragraph({ text: data.startTime || 'N/A' })] })
               ]
             }),
             new TableRow({
               children: [
-                new TableCell({ children: [new Paragraph('Total Data Points')] }),
-                new TableCell({ 
-                  children: [new Paragraph(data.sessionInfo.totalDataPoints.toString())]
-                })
+                new TableCell({ children: [new Paragraph({ text: 'End Time' })] }),
+                new TableCell({ children: [new Paragraph({ text: data.endTime || 'N/A' })] })
+              ]
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ text: 'Duration (ms)' })] }),
+                new TableCell({ children: [new Paragraph({ text: data.duration.toString() })] })
+              ]
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ text: 'Total Data Points' })] }),
+                new TableCell({ children: [new Paragraph({ text: data.totalDataPoints.toString() })] })
               ]
             })
           ]
         }),
-        new Paragraph({ text: '' }), // Spacing
-
-        // Data Summary
-        new Paragraph({
-          text: 'Data Summary',
-          heading: 'Heading1'
-        }),
-        ...generateDataSummary(data.gazeData),
-
-        // Sample Data Points
-        new Paragraph({
-          text: 'Sample Data Points (First 10)',
-          heading: 'Heading1'
-        }),
-        ...generateSampleDataTable(data.gazeData.slice(0, 10))
+        new Paragraph({ text: '' }),
+        new Paragraph({ text: 'Data Summary', heading: HeadingLevel.HEADING_2 }),
+        // Add summary statistics or visualizations here if needed
       ]
     }]
   });
 
-  const blob = await Packer.toBlob(doc);
-  saveAs(blob, `gaze-tracking-session-${new Date().toISOString()}.docx`);
+  Packer.toBlob(doc).then(blob => {
+    saveAs(blob, `gaze-data-${data.participantId}-${data.sessionType}-${format(new Date(), 'yyyyMMdd-HHmmss')}.docx`);
+  });
 };
 
-export const exportToMarkdown = (data: SessionData): void => {
-  let md = `# Gaze Tracking Session Report\n`;
-  md += `Generated on ${new Date().toLocaleString()}\n\n`;
+export const exportToMarkdown = (data: SessionData) => {
+  const markdown = `# Gaze Tracking Session Report
 
-  // Session Information
-  md += `## Session Information\n`;
-  md += `- Start Time: ${new Date(data.sessionInfo.startTime || 0).toLocaleString()}\n`;
-  md += `- End Time: ${new Date(data.sessionInfo.endTime).toLocaleString()}\n`;
-  md += `- Duration: ${(data.sessionInfo.duration / 1000).toFixed(2)} seconds\n`;
-  md += `- Total Data Points: ${data.sessionInfo.totalDataPoints}\n\n`;
+## Session Information
 
-  // Data Summary
-  md += `## Data Summary\n`;
-  const summary = calculateDataSummary(data.gazeData);
-  md += `- Average Confidence: ${summary.avgConfidence.toFixed(2)}\n`;
-  md += `- Average Pupil Diameter: ${summary.avgPupilD.toFixed(2)}\n`;
-  md += `- Head Movement Range:\n`;
-  md += `  - X: ${summary.headRange.x.toFixed(2)} units\n`;
-  md += `  - Y: ${summary.headRange.y.toFixed(2)} units\n`;
-  md += `  - Z: ${summary.headRange.z.toFixed(2)} units\n\n`;
+- **Participant ID:** ${data.participantId}
+- **Session Type:** ${data.sessionType}
+- **Start Time:** ${data.startTime || 'N/A'}
+- **End Time:** ${data.endTime || 'N/A'}
+- **Duration:** ${data.duration}ms
+- **Total Data Points:** ${data.totalDataPoints}
 
-  // Sample Data
-  md += `## Sample Data Points (First 5)\n`;
-  md += `| Timestamp | X | Y | Confidence | Head Position |\n`;
-  md += `|-----------|---|---|------------|---------------|\n`;
-  data.gazeData.slice(0, 5).forEach(point => {
-    md += `| ${new Date(point.timestamp).toLocaleTimeString()} | ${point.x.toFixed(2)} | ${point.y.toFixed(2)} | ${(point.confidence || 0).toFixed(2)} | (${point.HeadX?.toFixed(2) || 0}, ${point.HeadY?.toFixed(2) || 0}, ${point.HeadZ?.toFixed(2) || 0}) |\n`;
-  });
+## Data Summary
 
-  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
-  saveAs(blob, `gaze-tracking-session-${new Date().toISOString()}.md`);
+\`\`\`json
+${JSON.stringify(data.gazeData[0], null, 2)}
+\`\`\`
+
+*Note: First data point shown as example. Full dataset contains ${data.totalDataPoints} points.*
+`;
+
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8;' });
+  saveAs(blob, `gaze-data-${data.participantId}-${data.sessionType}-${format(new Date(), 'yyyyMMdd-HHmmss')}.md`);
 };
 
 // Helper functions
