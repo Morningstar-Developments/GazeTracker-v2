@@ -1,95 +1,86 @@
-import React, { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import type { GazeData } from "../types/gazeData";
-import * as d3 from "d3";
-import { hexbin } from 'd3-hexbin';
-import { fetchApi } from "../lib/api";
+import React, { useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import type { GazeData } from '../types/gazeData';
 
-export default function Heatmap() {
-  const [isVisible, setIsVisible] = useState(false);
-  const svgRef = useRef<SVGSVGElement>(null);
+const Heatmap: React.FC = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Fetch or receive gaze data
   const { data: gazeData } = useQuery<GazeData[]>({
-    queryKey: ["gaze-data"],
-    queryFn: () => fetchApi("api/sessions/current/gaze"),
-    refetchInterval: isVisible ? 1000 : false, // Only fetch when visible
+    queryKey: ['gaze-data'],
+    queryFn: async () => {
+      // Mock data for now
+      return [];
+    }
   });
 
   useEffect(() => {
-    if (!svgRef.current || !gazeData || !isVisible) {
-      if (svgRef.current) {
-        const svg = d3.select(svgRef.current);
-        svg.selectAll("*").remove();
+    if (!canvasRef.current || !gazeData) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Set canvas size to window size
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Clear previous heatmap
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Create heatmap data
+    const heatmapData = new Uint8ClampedArray(canvas.width * canvas.height * 4);
+
+    // Process gaze points
+    gazeData.forEach(point => {
+      const x = Math.floor(point.x);
+      const y = Math.floor(point.y);
+
+      if (x >= 0 && x < canvas.width && y >= 0 && y < canvas.height) {
+        const radius = 30;
+        const intensity = (point.confidence || 0.5) * 255;
+
+        // Add gaussian blur around each point
+        for (let i = -radius; i <= radius; i++) {
+          for (let j = -radius; j <= radius; j++) {
+            const currentX = x + i;
+            const currentY = y + j;
+
+            if (currentX >= 0 && currentX < canvas.width && currentY >= 0 && currentY < canvas.height) {
+              const distance = Math.sqrt(i * i + j * j);
+              const gaussianFactor = Math.exp(-(distance * distance) / (2 * (radius / 2) * (radius / 2)));
+              const index = (currentY * canvas.width + currentX) * 4;
+
+              heatmapData[index] = Math.min(255, heatmapData[index] + intensity * gaussianFactor); // Red
+              heatmapData[index + 1] = 0; // Green
+              heatmapData[index + 2] = 0; // Blue
+              heatmapData[index + 3] = Math.min(255, heatmapData[index + 3] + intensity * gaussianFactor); // Alpha
+            }
+          }
+        }
       }
-      return;
-    }
-
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-
-    const svg = d3.select(svgRef.current)
-      .attr("width", width)
-      .attr("height", height);
-    
-    svg.selectAll("*").remove();
-
-    const hexbinGenerator = hexbin<[number, number]>()
-      .radius(30)
-      .extent([[0, 0], [width, height]]);
-
-    // Filter out low confidence points and compute fixations
-    const validPoints = gazeData.filter(d => (d.confidence || 0) > 0.3);
-    const FIXATION_THRESHOLD = 30;
-    const fixations = validPoints.filter((d, i, arr) => {
-      if (i === 0) return true;
-      const prev = arr[i - 1];
-      return Math.sqrt(
-        Math.pow((d.x - prev.x), 2) + 
-        Math.pow((d.y - prev.y), 2)
-      ) < FIXATION_THRESHOLD;
     });
 
-    const points = fixations.map(d => [d.x, d.y] as [number, number]);
-    const bins = hexbinGenerator(points);
-
-    const colorScale = d3.scaleSequential(d3.interpolateInferno)
-      .domain([0, d3.max(bins, d => d.length) || 1]);
-
-    svg.append("g")
-      .selectAll("path")
-      .data(bins)
-      .join("path")
-      .attr("d", hexbinGenerator.hexagon())
-      .attr("transform", d => `translate(${d.x},${d.y})`)
-      .attr("fill", d => colorScale(d.length))
-      .attr("stroke", "#222")
-      .attr("stroke-opacity", 0.2)
-      .attr("role", "presentation");
-
-  }, [gazeData, isVisible]);
+    // Create and draw image data
+    const imageData = new ImageData(heatmapData, canvas.width, canvas.height);
+    ctx.putImageData(imageData, 0, 0);
+  }, [gazeData]);
 
   return (
-    <div className="heatmap-container">
-      <button
-        type="button"
-        className="heatmap-toggle"
-        onClick={() => setIsVisible(!isVisible)}
-      >
-        {isVisible ? 'Hide Heatmap' : 'Show Heatmap'}
-      </button>
-      <svg
-        ref={svgRef}
-        data-testid="heatmap-svg"
+    <div className="heatmap">
+      <canvas
+        ref={canvasRef}
         style={{
           position: 'fixed',
           top: 0,
           left: 0,
           pointerEvents: 'none',
-          opacity: isVisible ? 0.6 : 0,
-          transition: 'opacity 0.3s ease',
-          zIndex: 1000
+          opacity: 0.6,
+          zIndex: 9998
         }}
       />
     </div>
   );
-} 
+};
+
+export default Heatmap; 

@@ -18,18 +18,18 @@ export interface GazeData {
   pupilY?: number;
   
   // Document/screen coordinates
-  docX?: number;
-  docY?: number;
+  docX: number;
+  docY: number;
   screenX?: number;
   screenY?: number;
   
   // Head pose data
-  HeadX?: number;
-  HeadY?: number;
-  HeadZ?: number;
-  HeadYaw?: number;
-  HeadPitch?: number;
-  HeadRoll?: number;
+  HeadX: number;
+  HeadY: number;
+  HeadZ: number;
+  HeadYaw: number;
+  HeadPitch: number;
+  HeadRoll: number;
   
   // Additional eye tracking metrics
   fixationDuration?: number;

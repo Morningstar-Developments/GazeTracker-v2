@@ -7,10 +7,18 @@ import AnalyticsDashboard from './components/AnalyticsDashboard';
 import { initGazeCloud } from './lib/gazecloud';
 import './index.css';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: false
+    }
+  }
+});
 
 function App() {
   useEffect(() => {
+    // Initialize GazeCloud when component mounts
     initGazeCloud().catch(console.error);
   }, []);
 

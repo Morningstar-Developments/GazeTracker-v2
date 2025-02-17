@@ -1,107 +1,50 @@
-import React, { useCallback, useState } from 'react';
-import { startTracking, stopTracking } from '../lib/gazecloud';
-import { fetchApi } from '../lib/api';
-import type { GazeData, SessionConfig } from '../types/gazeData';
+import React, { useEffect, useRef } from 'react';
+import type { GazeData } from '../types/gazeData';
 
-export default function SessionControl() {
-  const [isTracking, setIsTracking] = useState(false);
-  const [config, setConfig] = useState<SessionConfig>({
-    participantId: '',
-    isPilot: false
-  });
+interface GazeTrackerProps {
+  onGazeData?: (data: GazeData) => void;
+}
 
-  const handleStartSession = useCallback(async () => {
-    // Create new session with config
-    await fetchApi('api/sessions', {
-      method: 'POST',
-      body: JSON.stringify(config)
-    });
+const GazeTracker: React.FC<GazeTrackerProps> = ({ onGazeData }) => {
+  const gazePointRef = useRef<HTMLDivElement>(null);
 
-    // Start eye tracking
-    startTracking(
-      (data: GazeData) => {
-        // Send gaze data to current session
-        fetchApi('api/sessions/current/gaze', {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }).catch(console.error);
-      },
-      () => console.log('Calibration complete')
-    );
-    setIsTracking(true);
-  }, [config]);
+  useEffect(() => {
+    const handleGazeData = (data: GazeData) => {
+      if (gazePointRef.current) {
+        gazePointRef.current.style.display = 'block';
+        gazePointRef.current.style.transform = `translate(${data.x}px, ${data.y}px)`;
+      }
+      onGazeData?.(data);
+    };
 
-  const handleStopSession = useCallback(async () => {
-    // Stop eye tracking
-    stopTracking();
-    setIsTracking(false);
+    // Add event listener for gaze data
+    window.GazeCloudAPI.OnResult = handleGazeData;
 
-    // End current session
-    await fetchApi('api/sessions/current', {
-      method: 'PUT',
-      body: JSON.stringify({ status: 'completed' })
-    });
-
-    // Reset config
-    setConfig({
-      participantId: '',
-      isPilot: false
-    });
-  }, []);
+    return () => {
+      // Cleanup
+      window.GazeCloudAPI.OnResult = () => {};
+    };
+  }, [onGazeData]);
 
   return (
-    <div className="session-control">
-      <h2>Session Control</h2>
-      
-      <div className="config-form">
-        <div className="form-group">
-          <label htmlFor="participantId">Participant ID:</label>
-          <input
-            type="text"
-            id="participantId"
-            value={config.participantId}
-            onChange={(e) => setConfig((prev: SessionConfig) => ({
-              ...prev,
-              participantId: e.target.value
-            }))}
-            disabled={isTracking}
-          />
-        </div>
-
-        <div className="form-group">
-          <label>
-            <input
-              type="checkbox"
-              checked={config.isPilot}
-              onChange={(e) => setConfig((prev: SessionConfig) => ({
-                ...prev,
-                isPilot: e.target.checked
-              }))}
-              disabled={isTracking}
-            />
-            Pilot Session
-          </label>
-        </div>
-      </div>
-
-      <div className="button-group">
-        <button 
-          type="button"
-          onClick={handleStartSession}
-          disabled={isTracking || !config.participantId}
-        >
-          Start Session
-        </button>
-        <button 
-          type="button"
-          onClick={handleStopSession}
-          disabled={!isTracking}
-        >
-          End Session
-        </button>
-      </div>
-
-      <div id="gaze" className="gaze-point" style={{ display: 'none' }} />
+    <div className="gaze-tracker">
+      <div 
+        ref={gazePointRef}
+        className="gaze-point"
+        style={{
+          display: 'none',
+          position: 'fixed',
+          width: '20px',
+          height: '20px',
+          borderRadius: '50%',
+          backgroundColor: 'rgba(255, 0, 0, 0.5)',
+          pointerEvents: 'none',
+          zIndex: 9999,
+          transform: 'translate(-50%, -50%)'
+        }}
+      />
     </div>
   );
-}
+};
+
+export default GazeTracker;
