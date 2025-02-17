@@ -86,7 +86,7 @@ describe('Analytics Module', () => {
       const result = computeGazeMetrics(gazeData);
 
       expect(result.averageConfidence).toBe(0);
-      expect(result.totalDuration).toBe(200);
+      expect(result.totalDuration).toBe(0); // All points filtered out due to low confidence
       expect(result.fixationCount).toBe(0);
       expect(result.saccadeCount).toBe(0);
     });
