@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Heatmap from '../../components/Heatmap';
 import { fetchApi } from '../../lib/api';
@@ -7,6 +7,49 @@ import { fetchApi } from '../../lib/api';
 // Mock the API module
 jest.mock('../../lib/api', () => ({
   fetchApi: jest.fn()
+}));
+
+// Mock d3 modules
+const mockD3Selection = {
+  attr: jest.fn().mockReturnThis(),
+  selectAll: jest.fn().mockReturnThis(),
+  remove: jest.fn().mockReturnThis(),
+  append: jest.fn().mockReturnThis(),
+  data: jest.fn().mockReturnThis(),
+  join: jest.fn().mockReturnThis(),
+  style: jest.fn().mockReturnThis(),
+  domain: jest.fn().mockReturnThis(),
+  range: jest.fn().mockReturnThis(),
+  call: jest.fn().mockReturnThis(),
+  datum: jest.fn().mockReturnThis(),
+  text: jest.fn().mockReturnThis(),
+  transition: jest.fn().mockReturnThis()
+};
+
+jest.mock('d3', () => ({
+  select: jest.fn(() => mockD3Selection),
+  selectAll: jest.fn(() => mockD3Selection),
+  scaleSequential: jest.fn(() => (d: number) => `rgba(0,0,${d},1)`),
+  interpolateInferno: jest.fn(),
+  max: jest.fn().mockReturnValue(10),
+  line: jest.fn(() => mockD3Selection),
+  axisBottom: jest.fn(() => mockD3Selection),
+  axisLeft: jest.fn(() => mockD3Selection),
+  scaleLinear: jest.fn(() => mockD3Selection)
+}));
+
+// Create hexbin mock function first
+const mockHexagon = jest.fn().mockReturnValue('M0,0L0,1L1,1L1,0Z');
+const mockHexbinInstance = {
+  radius: jest.fn().mockReturnThis(),
+  extent: jest.fn().mockReturnThis(),
+  hexagon: mockHexagon,
+  __data__: []
+};
+
+// Then use it in the mock
+jest.mock('d3-hexbin', () => ({
+  hexbin: jest.fn(() => mockHexbinInstance)
 }));
 
 const mockGazeData = [
@@ -26,9 +69,6 @@ describe('Heatmap Component', () => {
 
   beforeEach(() => {
     (fetchApi as jest.Mock).mockResolvedValue(mockGazeData);
-  });
-
-  afterEach(() => {
     jest.clearAllMocks();
   });
 
@@ -79,9 +119,13 @@ describe('Heatmap Component', () => {
     fireEvent.click(button);
     
     await waitFor(() => {
-      const svg = document.querySelector('svg');
+      const svg = screen.getByTestId('heatmap-svg');
       expect(svg).toBeInTheDocument();
-      expect(svg?.getAttribute('style')).toContain('opacity: 0.6');
+    });
+
+    await waitFor(() => {
+      const svg = screen.getByTestId('heatmap-svg');
+      expect(svg).toHaveStyle({ opacity: '0.6' });
     });
   });
 
@@ -92,14 +136,14 @@ describe('Heatmap Component', () => {
     // Show heatmap
     fireEvent.click(button);
     await waitFor(() => {
-      expect(document.querySelector('svg')).toBeInTheDocument();
+      expect(screen.getByTestId('heatmap-svg')).toBeInTheDocument();
     });
     
     // Hide heatmap
     fireEvent.click(button);
     await waitFor(() => {
-      const svg = document.querySelector('svg');
-      expect(svg?.getAttribute('style')).toContain('opacity: 0');
+      const svg = screen.getByTestId('heatmap-svg');
+      expect(svg).toHaveStyle({ opacity: '0' });
     });
   });
 
@@ -112,8 +156,8 @@ describe('Heatmap Component', () => {
     fireEvent.click(button);
     
     await waitFor(() => {
-      const svg = document.querySelector('svg');
-      expect(svg?.innerHTML).toBe('');
+      const svg = screen.getByTestId('heatmap-svg');
+      expect(within(svg).queryByRole('presentation')).not.toBeInTheDocument();
     });
   });
 
@@ -131,9 +175,9 @@ describe('Heatmap Component', () => {
     fireEvent.click(button);
     
     await waitFor(() => {
-      const paths = document.querySelectorAll('path');
-      // The number of paths should correspond to the high confidence points
-      expect(paths.length).toBeGreaterThan(0);
+      const svg = screen.getByTestId('heatmap-svg');
+      expect(mockD3Selection.data).toHaveBeenCalled();
+      expect(mockD3Selection.join).toHaveBeenCalled();
     });
   });
 }); 

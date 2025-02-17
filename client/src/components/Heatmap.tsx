@@ -63,7 +63,8 @@ export default function Heatmap() {
       .attr("transform", d => `translate(${d.x},${d.y})`)
       .attr("fill", d => colorScale(d.length))
       .attr("stroke", "#222")
-      .attr("stroke-opacity", 0.2);
+      .attr("stroke-opacity", 0.2)
+      .attr("role", "presentation");
 
   }, [gazeData, isVisible]);
 
@@ -78,6 +79,7 @@ export default function Heatmap() {
       </button>
       <svg
         ref={svgRef}
+        data-testid="heatmap-svg"
         style={{
           position: 'fixed',
           top: 0,
