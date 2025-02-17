@@ -6,7 +6,7 @@ module.exports = {
   mode: 'development',
   entry: './src/index.tsx',
   output: {
-    path: path.resolve(__dirname, 'build'),
+    path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.js',
     publicPath: '/'
   },
@@ -21,19 +21,7 @@ module.exports = {
       {
         test: /\.(ts|tsx)$/,
         exclude: /node_modules/,
-        use: [
-          {
-            loader: 'ts-loader',
-            options: {
-              transpileOnly: false,
-              compilerOptions: {
-                module: 'esnext',
-                jsx: 'react-jsx',
-                sourceMap: true
-              }
-            }
-          }
-        ]
+        use: 'ts-loader',
       },
       {
         test: /\.css$/,
@@ -60,21 +48,17 @@ module.exports = {
     static: {
       directory: path.join(__dirname, 'public')
     },
-    historyApiFallback: true,
+    compress: true,
     port: 3000,
     hot: true,
     open: true,
-    host: 'localhost',
-    allowedHosts: ['localhost'],
+    historyApiFallback: true,
+    allowedHosts: ['localhost', '.localhost'],
     headers: {
       'Access-Control-Allow-Origin': '*'
     },
     proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
-        secure: false,
-        changeOrigin: true
-      }
+      '/api': 'http://localhost:3001',
     },
     client: {
       overlay: true,

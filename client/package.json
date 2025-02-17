@@ -12,6 +12,8 @@
     "papaparse": "^5.4.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-dropzone": "^14.3.5",
+    "recharts": "^2.15.1",
     "web-vitals": "^2.1.4",
     "xlsx": "^0.18.5"
   },
@@ -54,6 +56,8 @@
     "@types/papaparse": "^5.3.15",
     "@types/react": "^18.0.28",
     "@types/react-dom": "^18.0.11",
+    "@types/react-dropzone": "^4.2.2",
+    "@types/recharts": "^1.8.29",
     "@typescript-eslint/eslint-plugin": "^5.54.0",
     "@typescript-eslint/parser": "^5.54.0",
     "ajv": "^8.12.0",

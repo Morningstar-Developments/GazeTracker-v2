@@ -16,6 +16,7 @@ interface EnhancedGazeData extends GazeData {
 
 const SessionControl: React.FC = () => {
   const [isTracking, setIsTracking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [calibrationComplete, setCalibrationComplete] = useState(false);
   const [gazeData, setGazeData] = useState<EnhancedGazeData[]>([]);
   const [startTime, setStartTime] = useState<number | null>(null);
@@ -23,7 +24,7 @@ const SessionControl: React.FC = () => {
   const [debugLog, setDebugLog] = useState<string[]>([]);
 
   const handleGazeData = useCallback((data: GazeData) => {
-    if (!startTime || !sessionConfig) return;
+    if (!startTime || !sessionConfig || isPaused) return;
 
     try {
       const now = new Date();
@@ -40,10 +41,8 @@ const SessionControl: React.FC = () => {
       };
 
       setGazeData(prev => {
-        // Ensure we don't miss any data points
         const newData = [...prev, enhancedData];
         
-        // Log data collection in pilot mode
         if (sessionConfig.isPilot && newData.length % 100 === 0) {
           setDebugLog(prevLog => [
             ...prevLog,
@@ -69,7 +68,7 @@ const SessionControl: React.FC = () => {
         ].slice(-100));
       }
     }
-  }, [startTime, sessionConfig]);
+  }, [startTime, sessionConfig, isPaused]);
 
   const handleStartTracking = () => {
     if (!sessionConfig) return;
@@ -77,6 +76,7 @@ const SessionControl: React.FC = () => {
     setGazeData([]);
     setDebugLog([]);
     setStartTime(Date.now());
+    setIsPaused(false);
     startTracking(
       handleGazeData,
       () => {
@@ -92,9 +92,38 @@ const SessionControl: React.FC = () => {
   const handleStopTracking = () => {
     stopTracking();
     setIsTracking(false);
+    setIsPaused(false);
     setCalibrationComplete(false);
     if (sessionConfig?.isPilot) {
       setDebugLog(prev => [...prev, `[${format(new Date(), 'HH:mm:ss.SSS')}] Session stopped`]);
+    }
+  };
+
+  const handlePause = () => {
+    setIsPaused(true);
+    if (sessionConfig?.isPilot) {
+      setDebugLog(prev => [...prev, `[${format(new Date(), 'HH:mm:ss.SSS')}] Session paused`]);
+    }
+  };
+
+  const handleResume = () => {
+    setIsPaused(false);
+    if (sessionConfig?.isPilot) {
+      setDebugLog(prev => [...prev, `[${format(new Date(), 'HH:mm:ss.SSS')}] Session resumed`]);
+    }
+  };
+
+  const handleKillswitch = () => {
+    stopTracking();
+    setIsTracking(false);
+    setIsPaused(false);
+    setCalibrationComplete(false);
+    setGazeData([]);
+    if (sessionConfig?.isPilot) {
+      setDebugLog(prev => [
+        ...prev, 
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] Session terminated by killswitch`
+      ]);
     }
   };
 
@@ -185,12 +214,16 @@ const SessionControl: React.FC = () => {
 
       <RecordingSession
         isRecording={isTracking}
+        isPaused={isPaused}
         startTime={startTime}
         gazeData={gazeData}
         onExport={handleExport}
         isPilot={sessionConfig.isPilot}
         participantId={sessionConfig.participantId}
         onDiscard={handleDiscardSession}
+        onPause={handlePause}
+        onResume={handleResume}
+        onKillswitch={sessionConfig.isPilot ? handleKillswitch : undefined}
       />
     </div>
   );

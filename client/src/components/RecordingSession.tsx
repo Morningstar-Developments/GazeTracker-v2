@@ -16,6 +16,10 @@ interface RecordingSessionProps {
   isPilot: boolean;
   participantId: string;
   onDiscard?: () => void;
+  onPause?: () => void;
+  onResume?: () => void;
+  onKillswitch?: () => void;
+  isPaused?: boolean;
 }
 
 const RecordingSession: React.FC<RecordingSessionProps> = ({
@@ -25,18 +29,23 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
   onExport,
   isPilot,
   participantId,
-  onDiscard
+  onDiscard,
+  onPause,
+  onResume,
+  onKillswitch,
+  isPaused = false
 }) => {
   const [elapsed, setElapsed] = useState<string>('00:00:00');
   const [isMinimized, setIsMinimized] = useState(false);
   const [showExportOptions, setShowExportOptions] = useState(false);
   const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
   const [lastGazePoint, setLastGazePoint] = useState<GazeData | null>(null);
+  const [showKillswitchConfirm, setShowKillswitchConfirm] = useState(false);
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
 
-    if (isRecording && startTime) {
+    if (isRecording && startTime && !isPaused) {
       intervalId = setInterval(() => {
         const now = Date.now();
         const duration = now - startTime;
@@ -57,7 +66,7 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
         clearInterval(intervalId);
       }
     };
-  }, [isRecording, startTime]);
+  }, [isRecording, startTime, isPaused]);
 
   useEffect(() => {
     if (gazeData.length > 0) {
@@ -104,82 +113,86 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
     }
   };
 
-  if (!isRecording) {
-    if (gazeData.length > 0) {
-      return (
-        <div className="session-end-prompt" style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          backgroundColor: 'white',
-          padding: '20px',
-          borderRadius: '8px',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-          zIndex: 1000
-        }}>
-          <h3>Session Complete</h3>
-          <p>Would you like to export or discard the recorded data?</p>
-          <p>Total data points: {gazeData.length}</p>
-          <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-            <button onClick={() => setShowExportOptions(true)} style={{
-              padding: '8px 16px',
-              backgroundColor: '#4CAF50',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}>Export Data</button>
-            <button onClick={() => setShowDiscardPrompt(true)} style={{
-              padding: '8px 16px',
-              backgroundColor: '#f44336',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}>Discard Data</button>
-          </div>
-
-          {showExportOptions && (
-            <div style={{ marginTop: '20px' }}>
-              <h4>Select Export Format:</h4>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button onClick={() => handleExport('json')}>JSON</button>
-                <button onClick={() => handleExport('csv')}>CSV</button>
-                <button onClick={() => handleExport('xlsx')}>Excel</button>
-                <button onClick={() => handleExport('docx')}>Word</button>
-                <button onClick={() => handleExport('md')}>Markdown</button>
-              </div>
-            </div>
-          )}
-
-          {showDiscardPrompt && (
-            <div style={{ marginTop: '20px' }}>
-              <p>Are you sure you want to discard this session's data?</p>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={handleDiscard} style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#f44336',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}>Yes, Discard</button>
-                <button onClick={() => setShowDiscardPrompt(false)} style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#9e9e9e',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}>Cancel</button>
-              </div>
-            </div>
-          )}
-        </div>
-      );
+  const handleKillswitch = () => {
+    if (onKillswitch) {
+      setShowKillswitchConfirm(false);
+      onKillswitch();
     }
-    return null;
+  };
+
+  if (!isRecording && gazeData.length > 0) {
+    return (
+      <div className="session-end-prompt" style={{
+        position: 'fixed',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        backgroundColor: 'white',
+        padding: '20px',
+        borderRadius: '8px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+        zIndex: 1000
+      }}>
+        <h3>Session Complete</h3>
+        <p>Would you like to export or discard the recorded data?</p>
+        <p>Total data points: {gazeData.length}</p>
+        <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+          <button onClick={() => setShowExportOptions(true)} style={{
+            padding: '8px 16px',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}>Export Data</button>
+          <button onClick={() => setShowDiscardPrompt(true)} style={{
+            padding: '8px 16px',
+            backgroundColor: '#f44336',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}>Discard Data</button>
+        </div>
+
+        {showExportOptions && (
+          <div style={{ marginTop: '20px' }}>
+            <h4>Select Export Format:</h4>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button onClick={() => handleExport('json')}>JSON</button>
+              <button onClick={() => handleExport('csv')}>CSV</button>
+              <button onClick={() => handleExport('xlsx')}>Excel</button>
+              <button onClick={() => handleExport('docx')}>Word</button>
+              <button onClick={() => handleExport('md')}>Markdown</button>
+            </div>
+          </div>
+        )}
+
+        {showDiscardPrompt && (
+          <div style={{ marginTop: '20px' }}>
+            <p>Are you sure you want to discard this session's data?</p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={handleDiscard} style={{
+                padding: '8px 16px',
+                backgroundColor: '#f44336',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}>Yes, Discard</button>
+              <button onClick={() => setShowDiscardPrompt(false)} style={{
+                padding: '8px 16px',
+                backgroundColor: '#9e9e9e',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   }
 
   const sessionWindow = (
@@ -209,10 +222,12 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
             width: '8px',
             height: '8px',
             borderRadius: '50%',
-            backgroundColor: '#f44336',
-            animation: 'pulse 1.5s infinite'
+            backgroundColor: isPaused ? '#ff9800' : '#f44336',
+            animation: isPaused ? 'none' : 'pulse 1.5s infinite'
           }} />
-          <span style={{ fontWeight: 'bold', color: '#333' }}>Recording Session</span>
+          <span style={{ fontWeight: 'bold', color: '#333' }}>
+            {isPaused ? 'Recording Paused' : 'Recording Session'}
+          </span>
         </div>
         <button 
           onClick={() => setIsMinimized(!isMinimized)} 
@@ -284,7 +299,109 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
             )}
           </div>
         )}
+
+        <div style={{ 
+          display: 'flex', 
+          gap: '8px', 
+          marginTop: '12px',
+          flexWrap: 'wrap'
+        }}>
+          <button
+            onClick={isPaused ? onResume : onPause}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: isPaused ? '#4CAF50' : '#ff9800',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              flex: '1'
+            }}
+          >
+            {isPaused ? 'Resume' : 'Pause'}
+          </button>
+          <button
+            onClick={() => setShowExportOptions(true)}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: '#2196F3',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              flex: '1'
+            }}
+          >
+            Export
+          </button>
+          {onKillswitch && (
+            <button
+              onClick={() => setShowKillswitchConfirm(true)}
+              style={{
+                padding: '6px 12px',
+                backgroundColor: '#f44336',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px',
+                flex: '1'
+              }}
+            >
+              Killswitch
+            </button>
+          )}
+        </div>
       </div>
+
+      {showKillswitchConfirm && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          backgroundColor: 'white',
+          padding: '15px',
+          borderRadius: '8px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+          zIndex: 1001,
+          width: '250px'
+        }}>
+          <p style={{ margin: '0 0 15px 0', textAlign: 'center', color: '#f44336' }}>
+            Are you sure you want to terminate the session immediately?
+          </p>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            <button
+              onClick={handleKillswitch}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#f44336',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              Terminate
+            </button>
+            <button
+              onClick={() => setShowKillswitchConfirm(false)}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#9e9e9e',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <style>
         {`
