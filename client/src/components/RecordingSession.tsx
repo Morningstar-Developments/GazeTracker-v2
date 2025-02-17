@@ -186,39 +186,122 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
     <div className={`recording-session ${isMinimized ? 'minimized' : ''}`} style={{
       position: 'fixed',
       right: '20px',
-      bottom: isMinimized ? '20px' : '50%',
-      transform: isMinimized ? 'none' : 'translateY(50%)',
+      bottom: '20px',
       backgroundColor: 'white',
       padding: '15px',
       borderRadius: '8px',
       boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
       width: isMinimized ? '200px' : '300px',
-      transition: 'all 0.3s ease'
+      transition: 'all 0.3s ease',
+      zIndex: 1000,
+      border: '1px solid #ddd'
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-        <span style={{ fontWeight: 'bold' }}>Recording Session</span>
-        <button onClick={() => setIsMinimized(!isMinimized)} style={{
-          border: 'none',
-          background: 'none',
-          cursor: 'pointer',
-          padding: '4px'
-        }}>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: '10px',
+        borderBottom: '1px solid #eee',
+        paddingBottom: '8px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            backgroundColor: '#f44336',
+            animation: 'pulse 1.5s infinite'
+          }} />
+          <span style={{ fontWeight: 'bold', color: '#333' }}>Recording Session</span>
+        </div>
+        <button 
+          onClick={() => setIsMinimized(!isMinimized)} 
+          style={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            padding: '4px 8px',
+            color: '#666',
+            fontSize: '16px',
+            lineHeight: 1
+          }}
+        >
           {isMinimized ? '□' : '−'}
         </button>
       </div>
 
-      <div style={{ fontSize: isMinimized ? '12px' : '14px' }}>
-        <div>Time: {elapsed}</div>
-        <div>Data Points: {gazeData.length}</div>
+      <div style={{ 
+        fontSize: isMinimized ? '12px' : '14px',
+        color: '#333'
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          marginBottom: '8px',
+          padding: '4px 8px',
+          backgroundColor: '#f8f9fa',
+          borderRadius: '4px'
+        }}>
+          <span>Time:</span>
+          <span style={{ fontWeight: 'bold' }}>{elapsed}</span>
+        </div>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between',
+          marginBottom: '8px',
+          padding: '4px 8px',
+          backgroundColor: '#f8f9fa',
+          borderRadius: '4px'
+        }}>
+          <span>Data Points:</span>
+          <span style={{ fontWeight: 'bold' }}>{gazeData.length}</span>
+        </div>
         {lastGazePoint && (
-          <div style={{ fontSize: '11px', marginTop: '5px' }}>
-            <div>Last Position: ({Math.round(lastGazePoint.x)}, {Math.round(lastGazePoint.y)})</div>
+          <div style={{ 
+            marginTop: '8px',
+            padding: '8px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '4px',
+            fontSize: isMinimized ? '11px' : '13px'
+          }}>
+            <div style={{ marginBottom: '4px' }}>
+              <span>Position: </span>
+              <span style={{ fontWeight: 'bold' }}>
+                ({Math.round(lastGazePoint.x)}, {Math.round(lastGazePoint.y)})
+              </span>
+            </div>
             {lastGazePoint.confidence !== undefined && (
-              <div>Confidence: {(lastGazePoint.confidence * 100).toFixed(1)}%</div>
+              <div>
+                <span>Confidence: </span>
+                <span style={{ 
+                  fontWeight: 'bold',
+                  color: lastGazePoint.confidence > 0.8 ? '#4caf50' : 
+                         lastGazePoint.confidence > 0.5 ? '#ff9800' : '#f44336'
+                }}>
+                  {(lastGazePoint.confidence * 100).toFixed(1)}%
+                </span>
+              </div>
             )}
           </div>
         )}
       </div>
+
+      <style>
+        {`
+          @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+          }
+          .recording-session {
+            max-height: ${isMinimized ? '200px' : '400px'};
+            overflow: hidden;
+          }
+          .recording-session.minimized {
+            max-height: 200px;
+          }
+        `}
+      </style>
     </div>
   );
 

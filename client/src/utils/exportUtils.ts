@@ -16,12 +16,51 @@ interface SessionData {
   gazeData: GazeData[];
 }
 
-export const exportToJSON = (data: SessionData) => {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  saveAs(blob, `gaze-data-${data.participantId}-${data.sessionType}-${format(new Date(), 'yyyyMMdd-HHmmss')}.json`);
+const getFormattedFilename = (data: SessionData, extension: string): string => {
+  const timestamp = format(new Date(), 'yyyyMMdd_HHmmss');
+  const prefix = data.sessionType === 'pilot' ? 'P' : 'L';
+  const participantId = data.participantId.padStart(3, '0');
+  return `${prefix}${participantId}_${data.sessionType}_${timestamp}${extension}`;
 };
 
-export const exportToCSV = (data: SessionData) => {
+const getDataPath = (data: SessionData): string => {
+  return `data/${data.sessionType === 'pilot' ? 'pilot' : 'live'}`;
+};
+
+export const exportToJSON = async (data: SessionData) => {
+  const filename = getFormattedFilename(data, '.json');
+  const path = getDataPath(data);
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  
+  try {
+    const response = await fetch('/api/save-file', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        path: `${path}/${filename}`,
+        content: await blob.text(),
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to save file');
+    }
+    
+    // Also offer download to user
+    saveAs(blob, filename);
+  } catch (error) {
+    console.error('Error saving file:', error);
+    // Fallback to client-side download only
+    saveAs(blob, filename);
+  }
+};
+
+export const exportToCSV = async (data: SessionData) => {
+  const filename = getFormattedFilename(data, '.csv');
+  const path = getDataPath(data);
+  
   const csvData = Papa.unparse({
     fields: ['timestamp', 'x', 'y', 'leftEye', 'rightEye', 'confidence', 'participantId', 'sessionType'],
     data: data.gazeData.map(point => ({
@@ -35,11 +74,38 @@ export const exportToCSV = (data: SessionData) => {
       sessionType: data.sessionType
     }))
   });
+
   const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
-  saveAs(blob, `gaze-data-${data.participantId}-${data.sessionType}-${format(new Date(), 'yyyyMMdd-HHmmss')}.csv`);
+  
+  try {
+    const response = await fetch('/api/save-file', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        path: `${path}/${filename}`,
+        content: await blob.text(),
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to save file');
+    }
+    
+    // Also offer download to user
+    saveAs(blob, filename);
+  } catch (error) {
+    console.error('Error saving file:', error);
+    // Fallback to client-side download only
+    saveAs(blob, filename);
+  }
 };
 
-export const exportToXLSX = (data: SessionData) => {
+export const exportToXLSX = async (data: SessionData) => {
+  const filename = getFormattedFilename(data, '.xlsx');
+  const path = getDataPath(data);
+  
   const wb = XLSX.utils.book_new();
   
   // Session Info Sheet
@@ -67,7 +133,34 @@ export const exportToXLSX = (data: SessionData) => {
   const gazeWs = XLSX.utils.aoa_to_sheet(gazeDataArray);
   XLSX.utils.book_append_sheet(wb, gazeWs, 'Gaze Data');
 
-  XLSX.writeFile(wb, `gaze-data-${data.participantId}-${data.sessionType}-${format(new Date(), 'yyyyMMdd-HHmmss')}.xlsx`);
+  // Generate blob
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  
+  try {
+    const response = await fetch('/api/save-file', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        path: `${path}/${filename}`,
+        content: await blob.arrayBuffer(),
+        isBase64: true
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to save file');
+    }
+    
+    // Also offer download to user
+    saveAs(blob, filename);
+  } catch (error) {
+    console.error('Error saving file:', error);
+    // Fallback to client-side download only
+    saveAs(blob, filename);
+  }
 };
 
 export const exportToDocx = (data: SessionData) => {

@@ -25,26 +25,49 @@ const SessionControl: React.FC = () => {
   const handleGazeData = useCallback((data: GazeData) => {
     if (!startTime || !sessionConfig) return;
 
-    const now = new Date();
-    const sessionDuration = Date.now() - startTime;
-    
-    const enhancedData: EnhancedGazeData = {
-      ...data,
-      participantId: sessionConfig.participantId,
-      sessionType: sessionConfig.isPilot ? 'pilot' : 'live',
-      formattedTime: format(now, 'HH:mm:ss.SSS'),
-      formattedDate: format(now, 'yyyy-MM-dd'),
-      sessionTime: sessionDuration,
-      sessionTimeFormatted: format(sessionDuration, 'mm:ss.SSS')
-    };
+    try {
+      const now = new Date();
+      const sessionDuration = Date.now() - startTime;
+      
+      const enhancedData: EnhancedGazeData = {
+        ...data,
+        participantId: sessionConfig.participantId,
+        sessionType: sessionConfig.isPilot ? 'pilot' : 'live',
+        formattedTime: format(now, 'HH:mm:ss.SSS'),
+        formattedDate: format(now, 'yyyy-MM-dd'),
+        sessionTime: sessionDuration,
+        sessionTimeFormatted: format(sessionDuration, 'mm:ss.SSS')
+      };
 
-    setGazeData(prev => [...prev, enhancedData]);
+      setGazeData(prev => {
+        // Ensure we don't miss any data points
+        const newData = [...prev, enhancedData];
+        
+        // Log data collection in pilot mode
+        if (sessionConfig.isPilot && newData.length % 100 === 0) {
+          setDebugLog(prevLog => [
+            ...prevLog,
+            `[${enhancedData.formattedTime}] Collected ${newData.length} data points`
+          ].slice(-100));
+        }
+        
+        return newData;
+      });
 
-    if (sessionConfig.isPilot) {
-      setDebugLog(prev => [
-        ...prev,
-        `[${enhancedData.formattedTime}] Gaze position: (${Math.round(data.x)}, ${Math.round(data.y)}) | Confidence: ${(data.confidence || 0).toFixed(2)}`
-      ].slice(-100)); // Keep last 100 log entries
+      if (sessionConfig.isPilot) {
+        setDebugLog(prev => [
+          ...prev,
+          `[${enhancedData.formattedTime}] Gaze position: (${Math.round(data.x)}, ${Math.round(data.y)}) | Confidence: ${(data.confidence || 0).toFixed(2)}`
+        ].slice(-100));
+      }
+    } catch (error) {
+      console.error('Error processing gaze data:', error);
+      if (sessionConfig.isPilot) {
+        setDebugLog(prev => [
+          ...prev,
+          `[${format(new Date(), 'HH:mm:ss.SSS')}] Error processing gaze data: ${error}`
+        ].slice(-100));
+      }
     }
   }, [startTime, sessionConfig]);
 
