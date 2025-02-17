@@ -78,15 +78,17 @@ describe('Analytics Module', () => {
 
     it('should handle missing confidence values', () => {
       const gazeData: GazeData[] = [
-        { x: 100, y: 100, timestamp: 0 },
-        { x: 101, y: 101, timestamp: 100 },
-        { x: 102, y: 102, timestamp: 200 }
+        { x: 100, y: 100, timestamp: 1000 },
+        { x: 101, y: 101, timestamp: 1100 },
+        { x: 102, y: 102, timestamp: 1200 }
       ];
 
       const result = computeGazeMetrics(gazeData);
 
       expect(result.averageConfidence).toBe(0);
       expect(result.totalDuration).toBe(200);
+      expect(result.fixationCount).toBe(0);
+      expect(result.saccadeCount).toBe(0);
     });
   });
 }); 

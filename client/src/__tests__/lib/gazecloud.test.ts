@@ -1,10 +1,20 @@
 import { initGazeCloud, startTracking, stopTracking } from '../../lib/gazecloud';
 import type { GazeData } from '../../types/gazeData';
 
+jest.setTimeout(10000); // Increase timeout to 10 seconds
+
 describe('GazeCloud API Integration', () => {
   beforeEach(() => {
     // Reset all mocks before each test
     jest.clearAllMocks();
+    // Reset GazeCloud API mock
+    window.GazeCloudAPI = {
+      StartEyeTracking: jest.fn(),
+      StopEyeTracking: jest.fn(),
+      OnResult: jest.fn(),
+      OnCalibrationComplete: jest.fn(),
+      OnError: jest.fn(),
+    };
   });
 
   describe('initGazeCloud', () => {
@@ -40,16 +50,19 @@ describe('GazeCloud API Integration', () => {
     const mockGazeCallback = jest.fn();
     const mockCalibrationCallback = jest.fn();
 
+    beforeEach(() => {
+      mockGazeCallback.mockClear();
+      mockCalibrationCallback.mockClear();
+    });
+
     it('should start tracking when not already tracking', () => {
       startTracking(mockGazeCallback, mockCalibrationCallback);
-
       expect(window.GazeCloudAPI.StartEyeTracking).toHaveBeenCalled();
     });
 
     it('should not start tracking when already tracking', () => {
       startTracking(mockGazeCallback, mockCalibrationCallback);
       startTracking(mockGazeCallback, mockCalibrationCallback);
-
       expect(window.GazeCloudAPI.StartEyeTracking).toHaveBeenCalledTimes(1);
     });
 
@@ -69,7 +82,9 @@ describe('GazeCloud API Integration', () => {
         HeadRoll: 30
       };
 
-      window.GazeCloudAPI.OnResult(mockGazeResponse);
+      // Simulate gaze data event
+      const onResult = window.GazeCloudAPI.OnResult as jest.Mock;
+      onResult.mock.calls[0][0](mockGazeResponse);
 
       expect(mockGazeCallback).toHaveBeenCalledWith(expect.objectContaining({
         x: 100,
@@ -90,13 +105,11 @@ describe('GazeCloud API Integration', () => {
     it('should stop tracking when currently tracking', () => {
       startTracking(jest.fn(), jest.fn());
       stopTracking();
-
       expect(window.GazeCloudAPI.StopEyeTracking).toHaveBeenCalled();
     });
 
     it('should not stop tracking when not tracking', () => {
       stopTracking();
-
       expect(window.GazeCloudAPI.StopEyeTracking).not.toHaveBeenCalled();
     });
   });

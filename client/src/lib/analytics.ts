@@ -28,21 +28,29 @@ export function computeGazeMetrics(gazeData: GazeData[]): GazeMetrics {
   // Filter out low confidence points
   const validPoints = gazeData.filter(d => (d.confidence || 0) > MIN_CONFIDENCE);
   
+  if (validPoints.length === 0) {
+    return {
+      averageConfidence: 0,
+      fixationCount: 0,
+      averageFixationDuration: 0,
+      saccadeCount: 0,
+      averageSaccadeLength: 0,
+      totalDuration: 0
+    };
+  }
+
   // Calculate average confidence
   const averageConfidence = validPoints.reduce((sum, d) => sum + (d.confidence || 0), 0) / validPoints.length;
 
   // Identify fixations and saccades
   let fixationCount = 0;
   let totalFixationDuration = 0;
-  let currentFixationStart = 0;
+  let currentFixationStart = validPoints[0].timestamp || 0;
   let saccadeCount = 0;
   let totalSaccadeLength = 0;
 
   validPoints.forEach((point, i) => {
-    if (i === 0) {
-      currentFixationStart = point.timestamp || 0;
-      return;
-    }
+    if (i === 0) return;
 
     const prev = validPoints[i - 1];
     const distance = Math.sqrt(
