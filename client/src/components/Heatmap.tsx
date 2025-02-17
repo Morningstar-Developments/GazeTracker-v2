@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { GazeData } from "../types/gazeData";
 import * as d3 from "d3";
@@ -6,6 +6,7 @@ import { hexbin } from 'd3-hexbin';
 import { fetchApi } from "../lib/api";
 
 export default function Heatmap() {
+  const [isVisible, setIsVisible] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
   // Fetch historical gaze data
@@ -15,7 +16,14 @@ export default function Heatmap() {
   });
 
   useEffect(() => {
-    if (!svgRef.current) return;
+    if (!svgRef.current || !gazeData || !isVisible) {
+      // Clear SVG if heatmap is hidden
+      if (svgRef.current) {
+        const svg = d3.select(svgRef.current);
+        svg.selectAll("*").remove();
+      }
+      return;
+    }
 
     const width = svgRef.current.clientWidth;
     const height = svgRef.current.clientHeight;
@@ -50,7 +58,30 @@ export default function Heatmap() {
       .attr("transform", d => `translate(${d.x},${d.y})`)
       .attr("fill", d => color(d.length))
       .attr("stroke", "#222");
-  }, [gazeData]);
+  }, [gazeData, isVisible]);
 
-  return <svg ref={svgRef} width="800" height="600" />;
+  return (
+    <div className="heatmap-container">
+      <button
+        type="button"
+        className="heatmap-toggle"
+        onClick={() => setIsVisible(!isVisible)}
+      >
+        {isVisible ? 'Hide Heatmap' : 'Show Heatmap'}
+      </button>
+      <svg
+        ref={svgRef}
+        width="800"
+        height="600"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          pointerEvents: 'none',
+          opacity: isVisible ? 0.6 : 0,
+          transition: 'opacity 0.3s ease'
+        }}
+      />
+    </div>
+  );
 } 

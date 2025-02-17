@@ -24,13 +24,26 @@ export class DataStorageService {
 
   constructor() {
     this.outputDir = path.join(__dirname, '../../data');
-    // Create main data directory if it doesn't exist
-    if (!fs.existsSync(this.outputDir)) {
-      fs.mkdirSync(this.outputDir, { recursive: true });
-    }
-    // Create pilot and live subdirectories
-    fs.mkdirSync(path.join(this.outputDir, 'pilot'), { recursive: true });
-    fs.mkdirSync(path.join(this.outputDir, 'live'), { recursive: true });
+    this.ensureDirectoryStructure();
+  }
+
+  private ensureDirectoryStructure() {
+    // Create main directories if they don't exist
+    const dirs = [
+      this.outputDir,
+      path.join(this.outputDir, 'pilot'),
+      path.join(this.outputDir, 'live'),
+      path.join(this.outputDir, 'pilot/raw'),
+      path.join(this.outputDir, 'pilot/processed'),
+      path.join(this.outputDir, 'live/raw'),
+      path.join(this.outputDir, 'live/processed')
+    ];
+    
+    dirs.forEach(dir => {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+    });
   }
 
   initializeSession(config: SessionConfig) {
@@ -136,7 +149,7 @@ export class DataStorageService {
     return this.currentSession;
   }
 
-  saveSession() {
+  saveSession(): { rawFile: string, processedFile: string } {
     if (!this.sessionConfig) {
       throw new Error('Session not initialized');
     }
@@ -144,116 +157,85 @@ export class DataStorageService {
     const timestamp = format(new Date(), 'yyyyMMdd_HHmmss');
     const sessionType = this.sessionConfig.isPilot ? 'pilot' : 'live';
     const paddedId = this.sessionConfig.participantId.padStart(3, '0');
-    const filename = `P${paddedId}_${sessionType}_${timestamp}.csv`;
-    const subDir = path.join(this.outputDir, sessionType);
-    const filepath = path.join(subDir, filename);
+    
+    // Save raw data
+    const rawFilename = `P${paddedId}_${sessionType}_${timestamp}_raw.csv`;
+    const rawFilepath = path.join(this.outputDir, sessionType, 'raw', rawFilename);
+    this.saveRawData(rawFilepath);
 
+    // Save processed data
+    const processedFilename = `P${paddedId}_${sessionType}_${timestamp}_processed.csv`;
+    const processedFilepath = path.join(this.outputDir, sessionType, 'processed', processedFilename);
+    this.saveProcessedData(processedFilepath);
+
+    return {
+      rawFile: rawFilename,
+      processedFile: processedFilename
+    };
+  }
+
+  private saveRawData(filepath: string) {
     const headers = [
-      // Time-related columns
       'timestamp',
-      'sessionTime',
-      'formattedTime',
-      'formattedDate',
-      'sessionTimeFormatted',
-      
-      // Basic gaze data
       'x',
       'y',
       'confidence',
-      'state',
-      
-      // Pupil data
       'pupilD',
-      'pupilX',
-      'pupilY',
-      
-      // Document/Screen coordinates
       'docX',
       'docY',
-      'screenX',
-      'screenY',
-      
-      // Head pose data
       'HeadX',
       'HeadY',
       'HeadZ',
       'HeadYaw',
       'HeadPitch',
-      'HeadRoll',
-      
-      // Fixation metrics
+      'HeadRoll'
+    ].join(',');
+
+    const rows = this.currentSession.map(data => [
+      data.timestamp,
+      data.x,
+      data.y,
+      data.confidence,
+      data.pupilD,
+      data.docX,
+      data.docY,
+      data.HeadX,
+      data.HeadY,
+      data.HeadZ,
+      data.HeadYaw,
+      data.HeadPitch,
+      data.HeadRoll
+    ].join(','));
+
+    fs.writeFileSync(filepath, [headers, ...rows].join('\n'));
+  }
+
+  private saveProcessedData(filepath: string) {
+    const headers = [
+      'sessionTime',
       'fixationDuration',
       'avgFixationDuration',
       'fixationsPerMinute',
-      
-      // Saccade metrics
       'saccadeLength',
       'avgSaccadeLength',
       'saccadesPerMinute',
-      
-      // Movement metrics
-      'gazeDistance',
       'gazeVelocity',
-      
-      // Blink metrics
       'blinkRate'
     ].join(',');
 
     const rows = this.currentSession.map(data => [
-      // Time-related data
-      data.timestamp,
       data.sessionTime,
-      data.formattedTime,
-      data.formattedDate,
-      data.sessionTimeFormatted,
-      
-      // Basic gaze data
-      data.x.toFixed(2),
-      data.y.toFixed(2),
-      (data.confidence || 0).toFixed(3),
-      data.state || '',
-      
-      // Pupil data
-      (data.pupilD || '').toString(),
-      (data.pupilX || '').toString(),
-      (data.pupilY || '').toString(),
-      
-      // Document/Screen coordinates
-      (data.docX || '').toString(),
-      (data.docY || '').toString(),
-      (data.screenX || '').toString(),
-      (data.screenY || '').toString(),
-      
-      // Head pose data
-      (data.HeadX || '').toString(),
-      (data.HeadY || '').toString(),
-      (data.HeadZ || '').toString(),
-      (data.HeadYaw || '').toString(),
-      (data.HeadPitch || '').toString(),
-      (data.HeadRoll || '').toString(),
-      
-      // Fixation metrics
-      (data.fixationDuration || '').toString(),
-      (data.avgFixationDuration || '').toString(),
-      (data.fixationsPerMinute || '').toString(),
-      
-      // Saccade metrics
-      (data.saccadeLength || '').toString(),
-      (data.avgSaccadeLength || '').toString(),
-      (data.saccadesPerMinute || '').toString(),
-      
-      // Movement metrics
-      (data.gazeDistance || '').toString(),
-      (data.gazeVelocity || '').toString(),
-      
-      // Blink metrics
-      (data.blinkRate || '').toString()
+      data.fixationDuration,
+      data.avgFixationDuration,
+      data.fixationsPerMinute,
+      data.saccadeLength,
+      data.avgSaccadeLength,
+      data.saccadesPerMinute,
+      data.gazeVelocity,
+      data.blinkRate
     ].join(','));
 
-    const csvContent = [headers, ...rows].join('\n');
-    fs.writeFileSync(filepath, csvContent);
-
-    return filename;
+    fs.writeFileSync(filepath, [headers, ...rows].join('\n'));
   }
 
   clearSession() {
