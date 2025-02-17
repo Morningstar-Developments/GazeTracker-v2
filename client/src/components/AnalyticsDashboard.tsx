@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as d3 from 'd3';
 import type { GazeData } from '../types/gazeData';
@@ -395,7 +395,6 @@ export default function AnalyticsDashboard() {
       default: return '❓ Unknown';
     }
   }
-
   return (
     <div className="analytics-dashboard">
       <h2>Live Analytics</h2>

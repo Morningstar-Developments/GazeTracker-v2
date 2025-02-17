@@ -9,15 +9,14 @@ export default function Heatmap() {
   const [isVisible, setIsVisible] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // Fetch historical gaze data
   const { data: gazeData } = useQuery<GazeData[]>({
     queryKey: ["gaze-data"],
     queryFn: () => fetchApi("api/sessions/current/gaze"),
+    refetchInterval: isVisible ? 1000 : false, // Only fetch when visible
   });
 
   useEffect(() => {
     if (!svgRef.current || !gazeData || !isVisible) {
-      // Clear SVG if heatmap is hidden
       if (svgRef.current) {
         const svg = d3.select(svgRef.current);
         svg.selectAll("*").remove();
@@ -25,39 +24,47 @@ export default function Heatmap() {
       return;
     }
 
-    const width = svgRef.current.clientWidth;
-    const height = svgRef.current.clientHeight;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
 
-    const svg = d3.select(svgRef.current);
+    const svg = d3.select(svgRef.current)
+      .attr("width", width)
+      .attr("height", height);
+    
     svg.selectAll("*").remove();
 
     const hexbinGenerator = hexbin<[number, number]>()
       .radius(30)
       .extent([[0, 0], [width, height]]);
 
-    // Compute Fixation Density
-    const FIXATION_THRESHOLD = 30; 
-    const filteredFixations = (gazeData || []).filter((d, i, arr) => {
+    // Filter out low confidence points and compute fixations
+    const validPoints = gazeData.filter(d => (d.confidence || 0) > 0.3);
+    const FIXATION_THRESHOLD = 30;
+    const fixations = validPoints.filter((d, i, arr) => {
       if (i === 0) return true;
       const prev = arr[i - 1];
-      return Math.sqrt((d.x - prev.x) ** 2 + (d.y - prev.y) ** 2) < FIXATION_THRESHOLD;
+      return Math.sqrt(
+        Math.pow((d.x - prev.x), 2) + 
+        Math.pow((d.y - prev.y), 2)
+      ) < FIXATION_THRESHOLD;
     });
-    const points = filteredFixations.map((d) => [d.x, d.y] as [number, number]);
+
+    const points = fixations.map(d => [d.x, d.y] as [number, number]);
     const bins = hexbinGenerator(points);
 
-    const color = d3.scaleSequential(d3.interpolatePlasma)
-      .domain([0, d3.max(bins.map(d => d.length)) ?? 0]);
+    const colorScale = d3.scaleSequential(d3.interpolateInferno)
+      .domain([0, d3.max(bins, d => d.length) || 1]);
 
-    svg
-      .append("g")
+    svg.append("g")
       .selectAll("path")
       .data(bins)
-      .enter()
-      .append("path")
+      .join("path")
       .attr("d", hexbinGenerator.hexagon())
       .attr("transform", d => `translate(${d.x},${d.y})`)
-      .attr("fill", d => color(d.length))
-      .attr("stroke", "#222");
+      .attr("fill", d => colorScale(d.length))
+      .attr("stroke", "#222")
+      .attr("stroke-opacity", 0.2);
+
   }, [gazeData, isVisible]);
 
   return (
@@ -71,15 +78,14 @@ export default function Heatmap() {
       </button>
       <svg
         ref={svgRef}
-        width="800"
-        height="600"
         style={{
-          position: 'absolute',
+          position: 'fixed',
           top: 0,
           left: 0,
           pointerEvents: 'none',
           opacity: isVisible ? 0.6 : 0,
-          transition: 'opacity 0.3s ease'
+          transition: 'opacity 0.3s ease',
+          zIndex: 1000
         }}
       />
     </div>

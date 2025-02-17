@@ -177,9 +177,13 @@ export class DataStorageService {
   private saveRawData(filepath: string) {
     const headers = [
       'timestamp',
+      'sessionTime',
+      'formattedTime',
+      'formattedDate',
       'x',
       'y',
       'confidence',
+      'state',
       'pupilD',
       'docX',
       'docY',
@@ -193,18 +197,22 @@ export class DataStorageService {
 
     const rows = this.currentSession.map(data => [
       data.timestamp,
+      data.sessionTime,
+      data.formattedTime,
+      data.formattedDate,
       data.x,
       data.y,
-      data.confidence,
-      data.pupilD,
-      data.docX,
-      data.docY,
-      data.HeadX,
-      data.HeadY,
-      data.HeadZ,
-      data.HeadYaw,
-      data.HeadPitch,
-      data.HeadRoll
+      data.confidence || 0,
+      data.state || 0,
+      data.pupilD || 0,
+      data.docX || 0,
+      data.docY || 0,
+      data.HeadX || 0,
+      data.HeadY || 0,
+      data.HeadZ || 0,
+      data.HeadYaw || 0,
+      data.HeadPitch || 0,
+      data.HeadRoll || 0
     ].join(','));
 
     fs.writeFileSync(filepath, [headers, ...rows].join('\n'));
@@ -212,6 +220,7 @@ export class DataStorageService {
 
   private saveProcessedData(filepath: string) {
     const headers = [
+      'timestamp',
       'sessionTime',
       'fixationDuration',
       'avgFixationDuration',
@@ -224,15 +233,16 @@ export class DataStorageService {
     ].join(',');
 
     const rows = this.currentSession.map(data => [
+      data.timestamp,
       data.sessionTime,
-      data.fixationDuration,
-      data.avgFixationDuration,
-      data.fixationsPerMinute,
-      data.saccadeLength,
-      data.avgSaccadeLength,
-      data.saccadesPerMinute,
-      data.gazeVelocity,
-      data.blinkRate
+      data.fixationDuration || 0,
+      data.avgFixationDuration || 0,
+      data.fixationsPerMinute || 0,
+      data.saccadeLength || 0,
+      data.avgSaccadeLength || 0,
+      data.saccadesPerMinute || 0,
+      data.gazeVelocity || 0,
+      data.blinkRate || 0
     ].join(','));
 
     fs.writeFileSync(filepath, [headers, ...rows].join('\n'));
