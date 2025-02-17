@@ -65,7 +65,7 @@ module.exports = {
     hot: true,
     open: true,
     host: 'localhost',
-    allowedHosts: 'all',
+    allowedHosts: ['localhost'],
     headers: {
       'Access-Control-Allow-Origin': '*'
     },

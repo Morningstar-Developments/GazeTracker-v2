@@ -1,21 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import type { GazeData } from '../types/gazeData';
-import type { GazeCloudAPIType } from '../types/global';
 
 interface GazeTrackerProps {
   onGazeData?: (data: GazeData) => void;
-}
-
-declare global {
-  interface Window {
-    GazeCloudAPI?: {
-      OnResult: (data: GazeData) => void;
-      StartEyeTracking: () => void;
-      StopEyeTracking: () => void;
-      OnCalibrationComplete: () => void;
-      OnError: (error: any) => void;
-    };
-  }
 }
 
 const GazeTracker: React.FC<GazeTrackerProps> = ({ onGazeData }) => {

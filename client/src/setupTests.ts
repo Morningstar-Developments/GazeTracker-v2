@@ -2,18 +2,6 @@ import '@testing-library/jest-dom';
 import type { GazeData } from './types/gazeData';
 import type { GazeCloudAPIType } from './types/global';
 
-declare global {
-  interface Window {
-    GazeCloudAPI?: {
-      StartEyeTracking: () => void;
-      StopEyeTracking: () => void;
-      OnResult: (data: any) => void;
-      OnCalibrationComplete: () => void;
-      OnError: (error: any) => void;
-    };
-  }
-}
-
 // Mock GazeCloudAPI
 const mockAPI: GazeCloudAPIType = {
   StartEyeTracking: jest.fn(),

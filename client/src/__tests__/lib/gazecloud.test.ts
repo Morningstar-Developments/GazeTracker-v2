@@ -1,18 +1,5 @@
 import { initGazeCloud, startTracking, stopTracking } from '../../lib/gazecloud';
 import type { GazeData } from '../../types/gazeData';
-import type { GazeCloudAPIType } from '../../types/global';
-
-declare global {
-  interface Window {
-    GazeCloudAPI: {
-      StartEyeTracking: () => void;
-      StopEyeTracking: () => void;
-      OnResult: (data: GazeData) => void;
-      OnCalibrationComplete: () => void;
-      OnError: (error: any) => void;
-    };
-  }
-}
 
 jest.setTimeout(30000); // Increase timeout to 30 seconds for slower environments
 
@@ -24,7 +11,7 @@ describe('GazeCloud API Integration', () => {
     jest.clearAllMocks();
     
     // Reset GazeCloud API mock with more comprehensive mock implementation
-    const mockAPI: GazeCloudAPIType = {
+    const mockAPI = {
       StartEyeTracking: jest.fn(),
       StopEyeTracking: jest.fn(),
       OnResult: jest.fn(),
