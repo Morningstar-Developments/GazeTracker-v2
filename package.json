@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Eye tracking application using GazeCloud API",
   "scripts": {
-    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "start": "concurrently --kill-others-on-fail \"npm run server\" \"npm run client\"",
     "server": "nodemon --watch api/**/* -e ts,json --exec ts-node api/server.ts",
     "client": "cd client && npm start",
     "dev": "npm run start",

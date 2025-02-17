@@ -4,11 +4,7 @@ const webpack = require('webpack');
 
 module.exports = {
   mode: 'development',
-  entry: [
-    'webpack-dev-server/client?http://localhost:3000',
-    'webpack/hot/dev-server',
-    './src/index.tsx'
-  ],
+  entry: './src/index.tsx',
   output: {
     path: path.resolve(__dirname, 'build'),
     filename: 'bundle.js',
@@ -29,10 +25,11 @@ module.exports = {
           {
             loader: 'ts-loader',
             options: {
-              transpileOnly: true,
+              transpileOnly: false,
               compilerOptions: {
                 module: 'esnext',
-                jsx: 'react-jsx'
+                jsx: 'react-jsx',
+                sourceMap: true
               }
             }
           }
@@ -51,13 +48,13 @@ module.exports = {
   plugins: [
     new HtmlWebpackPlugin({
       template: './public/index.html',
-      favicon: './public/favicon.ico',
-      inject: true
+      inject: 'body',
+      favicon: './public/favicon.ico'
     }),
-    new webpack.HotModuleReplacementPlugin(),
     new webpack.DefinePlugin({
       'process.env.NODE_ENV': JSON.stringify('development')
-    })
+    }),
+    new webpack.ProgressPlugin()
   ],
   devServer: {
     static: {
@@ -65,12 +62,8 @@ module.exports = {
     },
     historyApiFallback: true,
     port: 3000,
-    hot: 'only',
-    open: {
-      app: {
-        name: 'Google Chrome'
-      }
-    },
+    hot: true,
+    open: true,
     host: 'localhost',
     allowedHosts: 'all',
     headers: {
@@ -84,12 +77,13 @@ module.exports = {
       }
     },
     client: {
-      overlay: {
-        errors: true,
-        warnings: false
-      },
-      progress: true
+      overlay: true,
+      progress: true,
+      logging: 'info'
     }
   },
-  devtool: 'eval-source-map'
+  stats: {
+    errorDetails: true
+  },
+  devtool: 'source-map'
 }; 

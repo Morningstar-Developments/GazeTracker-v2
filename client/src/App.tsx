@@ -7,6 +7,8 @@ import AnalyticsDashboard from './components/AnalyticsDashboard';
 import { initGazeCloud } from './lib/gazecloud';
 import './index.css';
 
+console.log('App.tsx is being evaluated');
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -17,14 +19,20 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+  console.log('App component is rendering');
+
   useEffect(() => {
+    console.log('App useEffect is running');
     // Initialize GazeCloud when component mounts
-    initGazeCloud().catch(console.error);
+    initGazeCloud().catch(error => {
+      console.error('Failed to initialize GazeCloud:', error);
+    });
   }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="App">
+      <div className="App" style={{ padding: '20px', background: '#f0f0f0' }}>
+        <h1 style={{ color: '#333', marginBottom: '20px' }}>GazeTracker</h1>
         <SessionControl />
         <div className="visualization-container">
           <div className="gaze-container">

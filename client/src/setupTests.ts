@@ -1,20 +1,37 @@
 import '@testing-library/jest-dom';
+import type { GazeData } from './types/gazeData';
+import type { GazeCloudAPIType } from './types/global';
+
+declare global {
+  interface Window {
+    GazeCloudAPI?: {
+      StartEyeTracking: () => void;
+      StopEyeTracking: () => void;
+      OnResult: (data: any) => void;
+      OnCalibrationComplete: () => void;
+      OnError: (error: any) => void;
+    };
+  }
+}
 
 // Mock GazeCloudAPI
-global.window.GazeCloudAPI = {
+const mockAPI: GazeCloudAPIType = {
   StartEyeTracking: jest.fn(),
   StopEyeTracking: jest.fn(),
   OnResult: jest.fn(),
   OnCalibrationComplete: jest.fn(),
   OnError: jest.fn(),
 };
+window.GazeCloudAPI = mockAPI;
 
 // Mock ResizeObserver
-global.ResizeObserver = class ResizeObserver {
+class ResizeObserver {
   observe = jest.fn();
   unobserve = jest.fn();
   disconnect = jest.fn();
-};
+}
+
+window.ResizeObserver = ResizeObserver;
 
 // Mock canvas context
 const createMockContext = () => ({

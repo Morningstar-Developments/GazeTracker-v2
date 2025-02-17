@@ -1,4 +1,18 @@
 import { initGazeCloud, startTracking, stopTracking } from '../../lib/gazecloud';
+import type { GazeData } from '../../types/gazeData';
+import type { GazeCloudAPIType } from '../../types/global';
+
+declare global {
+  interface Window {
+    GazeCloudAPI: {
+      StartEyeTracking: () => void;
+      StopEyeTracking: () => void;
+      OnResult: (data: GazeData) => void;
+      OnCalibrationComplete: () => void;
+      OnError: (error: any) => void;
+    };
+  }
+}
 
 jest.setTimeout(30000); // Increase timeout to 30 seconds for slower environments
 
@@ -10,13 +24,14 @@ describe('GazeCloud API Integration', () => {
     jest.clearAllMocks();
     
     // Reset GazeCloud API mock with more comprehensive mock implementation
-    window.GazeCloudAPI = {
+    const mockAPI: GazeCloudAPIType = {
       StartEyeTracking: jest.fn(),
       StopEyeTracking: jest.fn(),
       OnResult: jest.fn(),
       OnCalibrationComplete: jest.fn(),
       OnError: jest.fn(),
     };
+    window.GazeCloudAPI = mockAPI;
 
     // Mock script element
     mockScript = {
@@ -42,9 +57,9 @@ describe('GazeCloud API Integration', () => {
 
       expect(document.createElement).toHaveBeenCalledWith('script');
       expect(document.head.appendChild).toHaveBeenCalled();
-      expect(window.GazeCloudAPI.OnResult).toBeDefined();
-      expect(window.GazeCloudAPI.OnCalibrationComplete).toBeDefined();
-      expect(window.GazeCloudAPI.OnError).toBeDefined();
+      expect(window.GazeCloudAPI!.OnResult).toBeDefined();
+      expect(window.GazeCloudAPI!.OnCalibrationComplete).toBeDefined();
+      expect(window.GazeCloudAPI!.OnError).toBeDefined();
     });
 
     it('should handle script load error', async () => {
@@ -86,42 +101,42 @@ describe('GazeCloud API Integration', () => {
     it('should start tracking when not already tracking', async () => {
       await initGazeCloud().catch(() => {}); // Initialize first
       startTracking(mockGazeCallback, mockCalibrationCallback);
-      expect(window.GazeCloudAPI.StartEyeTracking).toHaveBeenCalled();
+      expect(window.GazeCloudAPI!.StartEyeTracking).toHaveBeenCalled();
     });
 
     it('should not start tracking when already tracking', async () => {
       await initGazeCloud().catch(() => {}); // Initialize first
       startTracking(mockGazeCallback, mockCalibrationCallback);
       startTracking(mockGazeCallback, mockCalibrationCallback);
-      expect(window.GazeCloudAPI.StartEyeTracking).toHaveBeenCalledTimes(1);
+      expect(window.GazeCloudAPI!.StartEyeTracking).toHaveBeenCalledTimes(1);
     });
 
     it('should handle gaze data with all possible fields', async () => {
       await initGazeCloud().catch(() => {});
       startTracking(mockGazeCallback, mockCalibrationCallback);
 
-      const mockGazeResponse = {
+      const mockGazeResponse: GazeData = {
+        x: 100,
+        y: 200,
+        timestamp: Date.now(),
         docX: 100,
         docY: 200,
-        state: 0,
-        diameter: 3.5,
+        confidence: 0.95,
+        pupilD: 3.5,
         HeadX: 0.1,
         HeadY: 0.2,
         HeadZ: 0.3,
         HeadYaw: 10,
         HeadPitch: 20,
-        HeadRoll: 30,
-        Timestamp: Date.now(),
-        confidence: 0.95
+        HeadRoll: 30
       };
 
-      const onResultCallback = (window.GazeCloudAPI.OnResult as jest.Mock).mock.calls[0][0];
-      onResultCallback(mockGazeResponse);
+      window.GazeCloudAPI!.OnResult(mockGazeResponse);
 
       expect(mockGazeCallback).toHaveBeenCalledWith(expect.objectContaining({
         x: 100,
         y: 200,
-        confidence: 0,
+        confidence: 0.95,
         pupilD: 3.5,
         HeadX: 0.1,
         HeadY: 0.2,
@@ -137,19 +152,22 @@ describe('GazeCloud API Integration', () => {
       await initGazeCloud().catch(() => {});
       startTracking(mockGazeCallback, mockCalibrationCallback);
 
-      const minimalGazeResponse = {
+      const minimalGazeResponse: GazeData = {
+        x: 100,
+        y: 200,
+        timestamp: Date.now(),
         docX: 100,
-        docY: 200,
-        state: 0
+        docY: 200
       };
 
-      const onResultCallback = (window.GazeCloudAPI.OnResult as jest.Mock).mock.calls[0][0];
-      onResultCallback(minimalGazeResponse);
+      window.GazeCloudAPI!.OnResult(minimalGazeResponse);
 
       expect(mockGazeCallback).toHaveBeenCalledWith(expect.objectContaining({
         x: 100,
         y: 200,
-        confidence: 0
+        docX: 100,
+        docY: 200,
+        timestamp: expect.any(Number)
       }));
     });
 
@@ -157,7 +175,7 @@ describe('GazeCloud API Integration', () => {
       await initGazeCloud().catch(() => {});
       startTracking(mockGazeCallback, mockCalibrationCallback);
 
-      const onCalibrationCallback = (window.GazeCloudAPI.OnCalibrationComplete as jest.Mock).mock.calls[0][0];
+      const onCalibrationCallback = (window.GazeCloudAPI!.OnCalibrationComplete as jest.Mock).mock.calls[0][0];
       onCalibrationCallback();
 
       expect(mockCalibrationCallback).toHaveBeenCalled();
@@ -169,12 +187,12 @@ describe('GazeCloud API Integration', () => {
       await initGazeCloud().catch(() => {});
       startTracking(jest.fn(), jest.fn());
       stopTracking();
-      expect(window.GazeCloudAPI.StopEyeTracking).toHaveBeenCalled();
+      expect(window.GazeCloudAPI!.StopEyeTracking).toHaveBeenCalled();
     });
 
     it('should not stop tracking when not tracking', () => {
       stopTracking();
-      expect(window.GazeCloudAPI.StopEyeTracking).not.toHaveBeenCalled();
+      expect(window.GazeCloudAPI!.StopEyeTracking).not.toHaveBeenCalled();
     });
 
     it('should clean up callbacks when stopping', async () => {
@@ -184,7 +202,7 @@ describe('GazeCloud API Integration', () => {
       stopTracking();
 
       // Try to trigger callbacks after stopping
-      const onResultCallback = (window.GazeCloudAPI.OnResult as jest.Mock).mock.calls[0][0];
+      const onResultCallback = (window.GazeCloudAPI!.OnResult as jest.Mock).mock.calls[0][0];
       onResultCallback({ docX: 100, docY: 100 });
 
       expect(mockGazeCallback).not.toHaveBeenCalled();
@@ -216,10 +234,17 @@ describe('GazeCloud API Integration', () => {
       ];
 
       for (const errorMessage of errors) {
-        window.GazeCloudAPI.OnError(new Error(errorMessage));
+        const api = window.GazeCloudAPI!;
+        api.OnError(new Error(errorMessage));
         
-        // Verify tracking state is reset
-        window.GazeCloudAPI.OnResult({ docX: 100, docY: 200 });
+        // Verify tracking state is reset with valid GazeData
+        api.OnResult({
+          x: 100,
+          y: 200,
+          timestamp: Date.now(),
+          docX: 100,
+          docY: 200
+        });
         expect(mockGazeCallback).not.toHaveBeenCalled();
       }
     });
@@ -232,9 +257,9 @@ describe('GazeCloud API Integration', () => {
       startTracking(mockGazeCallback, mockCalibrationCallback);
 
       // Simulate calibration error
-      window.GazeCloudAPI.OnError(new Error('Calibration failed'));
+      window.GazeCloudAPI!.OnError(new Error('Calibration failed'));
       
-      const onCalibrationCallback = (window.GazeCloudAPI.OnCalibrationComplete as jest.Mock).mock.calls[0][0];
+      const onCalibrationCallback = (window.GazeCloudAPI!.OnCalibrationComplete as jest.Mock).mock.calls[0][0];
       onCalibrationCallback();
 
       expect(mockCalibrationCallback).not.toHaveBeenCalled();

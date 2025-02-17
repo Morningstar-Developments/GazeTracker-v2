@@ -12,8 +12,8 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "NODE_ENV=development webpack serve --config webpack.config.js",
-    "build": "NODE_ENV=production webpack --mode production",
+    "start": "webpack serve --mode development --open",
+    "build": "webpack --mode production",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "lint": "eslint src --ext .ts,.tsx",
@@ -45,7 +45,7 @@
     "@types/d3": "^7.4.0",
     "@types/d3-hexbin": "^0.2.3",
     "@types/jest": "^27.5.2",
-    "@types/node": "^16.18.12",
+    "@types/node": "^16.18.126",
     "@types/react": "^18.0.28",
     "@types/react-dom": "^18.0.11",
     "@typescript-eslint/eslint-plugin": "^5.54.0",

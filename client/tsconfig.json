@@ -25,7 +25,7 @@
     "paths": {
       "@/*": ["*"]
     },
-    "types": ["react/jsx-runtime"]
+    "types": ["react/jsx-runtime", "node"]
   },
   "include": [
     "src"

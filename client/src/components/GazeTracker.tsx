@@ -1,14 +1,32 @@
 import React, { useEffect, useRef } from 'react';
 import type { GazeData } from '../types/gazeData';
+import type { GazeCloudAPIType } from '../types/global';
 
 interface GazeTrackerProps {
   onGazeData?: (data: GazeData) => void;
+}
+
+declare global {
+  interface Window {
+    GazeCloudAPI?: {
+      OnResult: (data: GazeData) => void;
+      StartEyeTracking: () => void;
+      StopEyeTracking: () => void;
+      OnCalibrationComplete: () => void;
+      OnError: (error: any) => void;
+    };
+  }
 }
 
 const GazeTracker: React.FC<GazeTrackerProps> = ({ onGazeData }) => {
   const gazePointRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!window.GazeCloudAPI) {
+      console.error('GazeCloudAPI not found. Make sure the script is loaded properly.');
+      return;
+    }
+
     const handleGazeData = (data: GazeData) => {
       if (gazePointRef.current) {
         gazePointRef.current.style.display = 'block';
@@ -22,7 +40,9 @@ const GazeTracker: React.FC<GazeTrackerProps> = ({ onGazeData }) => {
 
     return () => {
       // Cleanup
-      window.GazeCloudAPI.OnResult = () => {};
+      if (window.GazeCloudAPI) {
+        window.GazeCloudAPI.OnResult = () => {};
+      }
     };
   }, [onGazeData]);
 
