@@ -1,5 +1,4 @@
-import express from 'express';
-import { Router } from 'express';
+import { Request, Response, Router } from 'express';
 import { DataStorageService, SessionConfig } from '../services/dataStorage';
 import { GazeData } from '../types/gazeData';
 
@@ -7,7 +6,7 @@ const router = Router();
 const dataStorage = new DataStorageService();
 
 // Initialize a new session
-router.post('/sessions', (req, res) => {
+router.post('/sessions', (req: Request, res: Response) => {
   const config: SessionConfig = {
     participantId: req.body.participantId,
     isPilot: req.body.isPilot
@@ -18,12 +17,12 @@ router.post('/sessions', (req, res) => {
 });
 
 // Get all gaze data for current session
-router.get('/sessions/current/gaze', (req, res) => {
+router.get('/sessions/current/gaze', (req: Request, res: Response) => {
   res.json(dataStorage.getCurrentSession());
 });
 
 // Add new gaze data point
-router.post('/sessions/current/gaze', (req, res) => {
+router.post('/sessions/current/gaze', (req: Request, res: Response) => {
   const gazeData: GazeData = {
     x: req.body.x,
     y: req.body.y,
@@ -45,7 +44,7 @@ router.post('/sessions/current/gaze', (req, res) => {
 });
 
 // Save current session to CSV
-router.post('/sessions/current/save', (req, res) => {
+router.post('/sessions/current/save', (req: Request, res: Response) => {
   try {
     const filename = dataStorage.saveSession();
     res.json({ filename });
@@ -55,7 +54,7 @@ router.post('/sessions/current/save', (req, res) => {
 });
 
 // Clear current session
-router.delete('/sessions/current', (req, res) => {
+router.delete('/sessions/current', (req: Request, res: Response) => {
   dataStorage.clearSession();
   res.status(204).send();
 });

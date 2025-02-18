@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { startTracking, stopTracking } from '../lib/gazecloud';
 import type { GazeData } from '../types/gazeData';
 import RecordingSession from './RecordingSession';
@@ -22,6 +22,33 @@ const SessionControl: React.FC = () => {
   const [startTime, setStartTime] = useState<number | null>(null);
   const [sessionConfig, setSessionConfig] = useState<SessionConfigData | null>(null);
   const [debugLog, setDebugLog] = useState<string[]>([]);
+  const [lastLoggedCount, setLastLoggedCount] = useState<number>(0);
+
+  // Add periodic logging effect
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    if (isTracking && !isPaused && sessionConfig?.isPilot) {
+      intervalId = setInterval(() => {
+        const currentCount = gazeData.length;
+        if (currentCount > lastLoggedCount) {
+          const now = new Date();
+          const rate = ((currentCount - lastLoggedCount) / 5).toFixed(1); // points per second
+          setDebugLog(prev => [
+            ...prev,
+            `[${format(now, 'HH:mm:ss.SSS')}] Collection Status: ${currentCount} total points (${rate} pts/sec)`
+          ].slice(-100));
+          setLastLoggedCount(currentCount);
+        }
+      }, 5000); // Log every 5 seconds
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isTracking, isPaused, sessionConfig, gazeData.length, lastLoggedCount]);
 
   const handleGazeData = useCallback((data: GazeData) => {
     if (!startTime || !sessionConfig || isPaused) return;
@@ -75,6 +102,7 @@ const SessionControl: React.FC = () => {
     
     setGazeData([]);
     setDebugLog([]);
+    setLastLoggedCount(0);
     setStartTime(Date.now());
     setIsPaused(false);
     startTracking(
