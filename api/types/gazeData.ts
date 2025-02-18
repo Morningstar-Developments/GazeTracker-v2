@@ -1,0 +1,33 @@
+export interface GazeData {
+  x: number;
+  y: number;
+  timestamp: number;
+  sessionTime?: number;
+  formattedTime?: string;
+  formattedDate?: string;
+  sessionTimeFormatted?: string;
+  confidence?: number;
+  state?: number;
+  pupilD?: number;
+  pupilX?: number;
+  pupilY?: number;
+  docX?: number;
+  docY?: number;
+  screenX?: number;
+  screenY?: number;
+  HeadX?: number;
+  HeadY?: number;
+  HeadZ?: number;
+  HeadYaw?: number;
+  HeadPitch?: number;
+  HeadRoll?: number;
+  fixationDuration?: number;
+  avgFixationDuration?: number;
+  fixationsPerMinute?: number;
+  saccadeLength?: number;
+  avgSaccadeLength?: number;
+  saccadesPerMinute?: number;
+  gazeDistance?: number;
+  gazeVelocity?: number;
+  blinkRate?: number;
+} 
