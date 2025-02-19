@@ -354,7 +354,7 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
                                             onChange={handleTimeRangeChange}
                                             valueLabelDisplay="auto"
                                             valueLabelFormat={value => 
-                                                new Date(processedData?.startTime + (processedData?.duration * value / 100) || 0)
+                                                new Date((processedData?.startTime || 0) + ((processedData?.duration || 0) * value / 100))
                                                     .toISOString()
                                                     .substr(11, 8)
                                             }

@@ -536,7 +536,7 @@ export class GazeDataVisualizer {
 
         // Add axes
         const xAxis = d3.axisBottom(timeScale)
-            .tickFormat(d => new Date(+d).toISOString().substr(11, 8));
+            .tickFormat((d: d3.NumberValue) => new Date(d.valueOf()).toISOString().substr(11, 8));
         const yAxis = d3.axisLeft(pupilScale);
 
         this.svg.append('g')
