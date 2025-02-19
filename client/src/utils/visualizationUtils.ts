@@ -1,7 +1,7 @@
 import * as d3 from 'd3';
 import { GazeData } from '../types/gazeData';
 import { AnalyticsResult, FixationData, SaccadeData } from './analyticsUtils';
-import heatmap from 'heatmap.js';
+import Heatmap from 'heatmap.js';
 import { debounce } from 'lodash';
 
 // Configure logging
@@ -30,16 +30,17 @@ export interface VisualizationMetrics {
 }
 
 export class GazeDataVisualizer {
-    private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
-    private width: number;
-    private height: number;
-    private margin: { top: number; right: number; bottom: number; left: number };
-    private contentWidth: number;
-    private contentHeight: number;
+    private svg!: d3.Selection<SVGGElement, unknown, HTMLElement, any>;
+    private width!: number;
+    private height!: number;
+    private margin!: { top: number; right: number; bottom: number; left: number };
+    private contentWidth!: number;
+    private contentHeight!: number;
     private options: VisualizationOptions;
     private metrics: VisualizationMetrics;
-    private resizeObserver: ResizeObserver;
-    private tooltipDiv: d3.Selection<HTMLDivElement, unknown, null, undefined>;
+    private resizeObserver!: ResizeObserver;
+    private tooltipDiv!: d3.Selection<HTMLDivElement, unknown, HTMLElement, any>;
+    private currentVisualization: string = '';
 
     constructor(containerId: string, options: VisualizationOptions) {
         this.options = options;
@@ -74,10 +75,12 @@ export class GazeDataVisualizer {
 
         // Initialize SVG with error boundary
         try {
-            this.svg = d3.select(`#${containerId}`)
+            const svgContainer = d3.select(`#${containerId}`)
                 .append('svg')
                 .attr('width', this.width)
-                .attr('height', this.height)
+                .attr('height', this.height);
+
+            this.svg = svgContainer
                 .append('g')
                 .attr('transform', `translate(${this.margin.left},${this.margin.top})`);
         } catch (error) {
@@ -139,13 +142,14 @@ export class GazeDataVisualizer {
 
     private startPerformanceMetrics(): void {
         this.metrics.renderTime = performance.now();
-        this.metrics.memoryUsage = window.performance?.memory?.usedJSHeapSize || 0;
+        // Chrome-only memory API not available in standard Performance interface
+        this.metrics.memoryUsage = (window.performance as any)?.memory?.usedJSHeapSize || 0;
     }
 
     private endPerformanceMetrics(dataPoints: number): void {
         this.metrics.renderTime = performance.now() - this.metrics.renderTime;
         this.metrics.dataPoints = dataPoints;
-        this.metrics.memoryUsage = window.performance?.memory?.usedJSHeapSize || 0;
+        this.metrics.memoryUsage = (window.performance as any)?.memory?.usedJSHeapSize || 0;
 
         logger.debug('Performance Metrics:', {
             renderTime: `${this.metrics.renderTime.toFixed(2)}ms`,
@@ -355,24 +359,45 @@ export class GazeDataVisualizer {
     }
 
     public createHeatmap(gazeData: GazeData[]): void {
-        const heatmapInstance = heatmap.create({
-            container: this.svg.node()?.parentElement as HTMLElement,
-            radius: 40,
-            maxOpacity: 0.6,
-            minOpacity: 0,
-            blur: 0.75,
-        });
+        try {
+            this.startPerformanceMetrics();
+            if (!this.validateData(gazeData)) return;
 
-        const dataPoints = gazeData.map(point => ({
-            x: point.x,
-            y: point.y,
-            value: 1
-        }));
+            // Clear previous visualization
+            this.svg.selectAll('*').remove();
 
-        heatmapInstance.setData({
-            max: 10,
-            data: dataPoints
-        });
+            const container = this.svg.node()?.parentElement?.parentElement;
+            if (!container) {
+                throw new Error('Could not find container element');
+            }
+
+            // Initialize heatmap
+            const heatmapInstance = new Heatmap({
+                container: container as HTMLElement,
+                radius: 40,
+                maxOpacity: 0.6,
+                minOpacity: 0,
+                blur: 0.85
+            });
+
+            // Prepare data
+            const points = gazeData.map(d => ({
+                x: d.x,
+                y: d.y,
+                value: 1
+            }));
+
+            heatmapInstance.setData({
+                max: 1,
+                data: points
+            });
+
+            this.endPerformanceMetrics(gazeData.length);
+            this.currentVisualization = 'heatmap';
+        } catch (error) {
+            logger.error('Error creating heatmap visualization:', error);
+            this.showError('Failed to create heatmap visualization');
+        }
     }
 
     public createTemporalPlot(analyticsResult: AnalyticsResult): void {
@@ -386,9 +411,7 @@ export class GazeDataVisualizer {
         }));
 
         // Create scales
-        const xScale = d3.scaleLinear()
-            .domain([0, timeData.length])
-            .range([0, this.contentWidth]);
+        const xScale = this.createTemporalScale(timeData);
 
         const yScale = d3.scaleLinear()
             .domain([0, d3.max(timeData, d => d.duration) || 0])
@@ -417,6 +440,16 @@ export class GazeDataVisualizer {
             .attr('stroke', 'steelblue')
             .attr('stroke-width', 2)
             .attr('d', line);
+    }
+
+    private createTemporalScale(data: any[]): d3.ScaleTime<number, number> {
+        const extent = d3.extent(data, d => {
+            const timestamp = d.timestamp;
+            return typeof timestamp === 'number' ? new Date(timestamp) : null;
+        });
+        return d3.scaleTime()
+            .domain(extent as [Date, Date])
+            .range([0, this.contentWidth]);
     }
 
     public createHeadMovementPlot(gazeData: GazeData[]): void {
@@ -503,7 +536,7 @@ export class GazeDataVisualizer {
 
         // Add axes
         const xAxis = d3.axisBottom(timeScale)
-            .tickFormat(d => new Date(d).toISOString().substr(11, 8));
+            .tickFormat(d => new Date(+d).toISOString().substr(11, 8));
         const yAxis = d3.axisLeft(pupilScale);
 
         this.svg.append('g')
@@ -551,5 +584,21 @@ export class GazeDataVisualizer {
             .attr('dy', '0.35em')
             .attr('fill', 'white')
             .text(d => `${d.label}: ${d.value.toFixed(2)}`);
+    }
+
+    private updateCurrentVisualization(): void {
+        switch (this.currentVisualization) {
+            case 'scanpath':
+                // Re-render current scanpath
+                break;
+            case 'heatmap':
+                // Re-render current heatmap
+                break;
+            case 'temporal':
+                // Re-render current temporal plot
+                break;
+            default:
+                logger.warn('No current visualization to update');
+        }
     }
 } 

@@ -1,6 +1,6 @@
 import type { GazeData } from '../types/gazeData';
 
-interface FixationData {
+export interface FixationData {
   x: number;
   y: number;
   duration: number;
@@ -8,7 +8,7 @@ interface FixationData {
   endTime: number;
 }
 
-interface SaccadeData {
+export interface SaccadeData {
   startX: number;
   startY: number;
   endX: number;

@@ -20,6 +20,7 @@ import {
     Alert,
     Tooltip,
     IconButton,
+    SelectChangeEvent,
 } from '@mui/material';
 import { PlayArrow, Pause, Speed, Download, Refresh, Settings } from '@mui/icons-material';
 import { debounce } from 'lodash';
@@ -106,19 +107,36 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
         smoothAnimation: true
     });
 
-    // Memoize data processing
+    // Event handlers with proper types
+    const handleTabChange = (_: React.SyntheticEvent, newValue: VisualizationType) => {
+        setActiveTab(newValue);
+    };
+
+    const handleTimeRangeChange = (_: Event, newValue: number | number[]) => {
+        setTimeRange(newValue as [number, number]);
+    };
+
+    const handleSpeedChange = (event: SelectChangeEvent<number>) => {
+        setPlaybackSpeed(Number(event.target.value));
+    };
+
+    // Memoize data processing with null checks
     const processedData = useMemo(() => {
-        try {
+        if (!gazeData.length) {
             return {
-                startTime: gazeData[0]?.timestamp || 0,
-                endTime: gazeData[gazeData.length - 1]?.timestamp || 0,
-                duration: (gazeData[gazeData.length - 1]?.timestamp || 0) - (gazeData[0]?.timestamp || 0),
-                dataPoints: gazeData.length
+                startTime: 0,
+                endTime: 0,
+                duration: 0,
+                dataPoints: 0
             };
-        } catch (error) {
-            console.error('Error processing data:', error);
-            return null;
         }
+
+        return {
+            startTime: gazeData[0].timestamp,
+            endTime: gazeData[gazeData.length - 1].timestamp,
+            duration: gazeData[gazeData.length - 1].timestamp - gazeData[0].timestamp,
+            dataPoints: gazeData.length
+        };
     }, [gazeData]);
 
     // Initialize visualizer
@@ -169,8 +187,6 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
     }, [activeTab, timeRange, gazeData, settings]);
 
     const filterDataByTimeRange = useCallback((data: GazeData[], range: [number, number]): GazeData[] => {
-        if (!processedData) return [];
-
         const rangeStart = processedData.startTime + (processedData.duration * range[0]) / 100;
         const rangeEnd = processedData.startTime + (processedData.duration * range[1]) / 100;
         
@@ -293,7 +309,7 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
                         
                         <Tabs
                             value={activeTab}
-                            onChange={(_, newValue) => setActiveTab(newValue)}
+                            onChange={handleTabChange}
                             aria-label="visualization tabs"
                             sx={{ mb: 3 }}
                         >
@@ -321,7 +337,7 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
                                         <InputLabel>Speed</InputLabel>
                                         <Select
                                             value={playbackSpeed}
-                                            onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
+                                            onChange={handleSpeedChange}
                                             label="Speed"
                                             startAdornment={<Speed />}
                                         >
@@ -335,7 +351,7 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
                                     <Box sx={{ flex: 1, mx: 2 }}>
                                         <Slider
                                             value={timeRange}
-                                            onChange={(_, value) => setTimeRange(value as [number, number])}
+                                            onChange={handleTimeRangeChange}
                                             valueLabelDisplay="auto"
                                             valueLabelFormat={value => 
                                                 new Date(processedData?.startTime + (processedData?.duration * value / 100) || 0)
