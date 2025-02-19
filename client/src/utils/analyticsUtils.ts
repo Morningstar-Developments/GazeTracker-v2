@@ -89,11 +89,45 @@ function calculateDispersion(points: GazeData[]): number {
   return dispersion;
 }
 
+function isValidTimestamp(timestamp: number): boolean {
+  return !isNaN(timestamp) && timestamp > 0 && timestamp < Date.now() + 86400000; // within 24h future
+}
+
+function calculateSessionDuration(gazeData: GazeData[]): number {
+  if (!gazeData.length) return 0;
+  
+  const validTimestamps = gazeData
+    .map(d => d.timestamp)
+    .filter(isValidTimestamp)
+    .sort((a, b) => a - b);
+
+  if (!validTimestamps.length) return 0;
+  
+  return validTimestamps[validTimestamps.length - 1] - validTimestamps[0];
+}
+
+function formatDuration(ms: number): string {
+  if (!isFinite(ms) || ms < 0) return '0ms';
+  return `${ms.toFixed(0)}ms`;
+}
+
+function formatRate(count: number, durationMs: number): number {
+  if (!isFinite(count) || !isFinite(durationMs) || durationMs <= 0) return 0;
+  return (count / durationMs) * 60000; // Convert to per minute
+}
+
+function formatPercentage(part: number, whole: number): number {
+  if (!isFinite(part) || !isFinite(whole) || whole <= 0) return 0;
+  return (part / whole) * 100;
+}
+
 function detectFixationsIDT(gazeData: GazeData[]): FixationData[] {
   const fixations: FixationData[] = [];
   let currentWindow: GazeData[] = [];
   
   for (let i = 0; i < gazeData.length; i++) {
+    if (!isValidTimestamp(gazeData[i].timestamp)) continue;
+    
     currentWindow.push(gazeData[i]);
     
     // Calculate window duration
@@ -121,6 +155,21 @@ function detectFixationsIDT(gazeData: GazeData[]): FixationData[] {
       // Reset window to last point
       currentWindow = [gazeData[i]];
     }
+  }
+  
+  // Handle the last window if it's a valid fixation
+  const lastWindowDuration = currentWindow[currentWindow.length - 1]?.timestamp - currentWindow[0]?.timestamp;
+  if (lastWindowDuration >= FIXATION_DURATION_THRESHOLD) {
+    const centerX = currentWindow.reduce((sum, p) => sum + p.x, 0) / currentWindow.length;
+    const centerY = currentWindow.reduce((sum, p) => sum + p.y, 0) / currentWindow.length;
+    
+    fixations.push({
+      x: centerX,
+      y: centerY,
+      duration: lastWindowDuration,
+      startTime: currentWindow[0].timestamp,
+      endTime: currentWindow[currentWindow.length - 1].timestamp
+    });
   }
   
   return fixations;
@@ -268,7 +317,25 @@ function generateHeatmapData(gazeData: GazeData[]) {
   });
 }
 
-function calculateAverageHeadDistance(range: AnalyticsResult['headMovementRange']) {
+function calculateAverageHeadDistance(positions: { x: number; y: number; z: number }[]): number {
+  const range = {
+    x: {
+      min: Math.min(...positions.map(p => p.x)),
+      max: Math.max(...positions.map(p => p.x)),
+      range: Math.max(...positions.map(p => p.x)) - Math.min(...positions.map(p => p.x))
+    },
+    y: {
+      min: Math.min(...positions.map(p => p.y)),
+      max: Math.max(...positions.map(p => p.y)),
+      range: Math.max(...positions.map(p => p.y)) - Math.min(...positions.map(p => p.y))
+    },
+    z: {
+      min: Math.min(...positions.map(p => p.z)),
+      max: Math.max(...positions.map(p => p.z)),
+      range: Math.max(...positions.map(p => p.z)) - Math.min(...positions.map(p => p.z))
+    }
+  };
+  
   return Math.sqrt(
     Math.pow(range.x.range, 2) +
     Math.pow(range.y.range, 2) +
@@ -281,19 +348,36 @@ export function analyzeGazeData(gazeData: GazeData[]): AnalyticsResult {
     throw new Error('No gaze data provided for analysis');
   }
 
-  // Sort data by timestamp
-  const sortedData = [...gazeData].sort((a, b) => a.timestamp - b.timestamp);
-  const totalDuration = sortedData[sortedData.length - 1].timestamp - sortedData[0].timestamp;
+  // Sort and validate data
+  const sortedData = [...gazeData]
+    .filter(d => isValidTimestamp(d.timestamp))
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  if (!sortedData.length) {
+    throw new Error('No valid gaze data points found');
+  }
+
+  const sessionDuration = calculateSessionDuration(sortedData);
+  if (sessionDuration <= 0) {
+    throw new Error('Invalid session duration');
+  }
 
   // Basic Statistics
-  const confidenceValues = sortedData.map(d => d.confidence).filter((c): c is number => c !== undefined);
+  const confidenceValues = sortedData
+    .map(d => d.confidence)
+    .filter((c): c is number => typeof c === 'number' && !isNaN(c));
+    
   const averageConfidence = confidenceValues.length ? 
     confidenceValues.reduce((sum, val) => sum + val, 0) / confidenceValues.length : 0;
-  const samplingRate = (sortedData.length / totalDuration) * 1000; // Convert to Hz
+  const samplingRate = (sortedData.length / sessionDuration) * 1000; // Convert to Hz
 
   // Detect fixations using I-DT algorithm
   const fixations = detectFixationsIDT(sortedData);
-  
+  const totalFixationTime = fixations.reduce((sum, f) => sum + f.duration, 0);
+  const averageFixationDuration = fixations.length ? totalFixationTime / fixations.length : 0;
+  const fixationsPerMinute = formatRate(fixations.length, sessionDuration);
+  const fixationPercentage = formatPercentage(totalFixationTime, sessionDuration);
+
   // Detect saccades using I-VT algorithm
   const saccades = detectSaccadesIVT(sortedData);
   
@@ -307,21 +391,21 @@ export function analyzeGazeData(gazeData: GazeData[]): AnalyticsResult {
   const heatmapData = generateHeatmapData(sortedData);
 
   return {
-    totalDuration,
+    totalDuration: sessionDuration,
     totalDataPoints: sortedData.length,
     averageConfidence,
     samplingRate,
 
     fixations,
-    averageFixationDuration: fixations.reduce((sum, f) => sum + f.duration, 0) / fixations.length,
-    fixationsPerMinute: (fixations.length / totalDuration) * 60000,
-    totalFixationTime: fixations.reduce((sum, f) => sum + f.duration, 0),
-    fixationPercentage: (fixations.reduce((sum, f) => sum + f.duration, 0) / totalDuration) * 100,
+    averageFixationDuration,
+    fixationsPerMinute,
+    totalFixationTime,
+    fixationPercentage,
 
     saccades,
     averageSaccadeLength: saccades.reduce((sum, s) => sum + s.length, 0) / saccades.length,
     averageSaccadeVelocity: saccades.reduce((sum, s) => sum + s.velocity, 0) / saccades.length,
-    saccadesPerMinute: (saccades.length / totalDuration) * 60000,
+    saccadesPerMinute: formatRate(saccades.length, sessionDuration),
 
     headMovementRange: {
       x: { 
