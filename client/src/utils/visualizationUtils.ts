@@ -2,6 +2,16 @@ import * as d3 from 'd3';
 import { GazeData } from '../types/gazeData';
 import { AnalyticsResult, FixationData, SaccadeData } from './analyticsUtils';
 import heatmap from 'heatmap.js';
+import { debounce } from 'lodash';
+
+// Configure logging
+const DEBUG = process.env.NODE_ENV === 'development';
+const logger = {
+    debug: (...args: any[]) => DEBUG && console.debug('[GazeViz]', ...args),
+    info: (...args: any[]) => console.info('[GazeViz]', ...args),
+    warn: (...args: any[]) => console.warn('[GazeViz]', ...args),
+    error: (...args: any[]) => console.error('[GazeViz]', ...args)
+};
 
 export interface VisualizationOptions {
     width: number;
@@ -10,6 +20,13 @@ export interface VisualizationOptions {
     colorScheme?: string[];
     animate?: boolean;
     showLegend?: boolean;
+    performanceMode?: boolean;
+}
+
+export interface VisualizationMetrics {
+    renderTime: number;
+    dataPoints: number;
+    memoryUsage: number;
 }
 
 export class GazeDataVisualizer {
@@ -19,38 +36,182 @@ export class GazeDataVisualizer {
     private margin: { top: number; right: number; bottom: number; left: number };
     private contentWidth: number;
     private contentHeight: number;
+    private options: VisualizationOptions;
+    private metrics: VisualizationMetrics;
+    private resizeObserver: ResizeObserver;
+    private tooltipDiv: d3.Selection<HTMLDivElement, unknown, null, undefined>;
 
     constructor(containerId: string, options: VisualizationOptions) {
-        this.width = options.width;
-        this.height = options.height;
-        this.margin = options.margin;
+        this.options = options;
+        this.metrics = {
+            renderTime: 0,
+            dataPoints: 0,
+            memoryUsage: 0
+        };
+
+        try {
+            this.initializeVisualization(containerId);
+            this.setupResizeHandler(containerId);
+            this.createTooltip();
+            logger.info('Visualization initialized successfully');
+        } catch (error) {
+            logger.error('Failed to initialize visualization:', error);
+            throw new Error('Visualization initialization failed');
+        }
+    }
+
+    private initializeVisualization(containerId: string): void {
+        const container = document.getElementById(containerId);
+        if (!container) {
+            throw new Error(`Container with id '${containerId}' not found`);
+        }
+
+        this.width = this.options.width;
+        this.height = this.options.height;
+        this.margin = this.options.margin;
         this.contentWidth = this.width - this.margin.left - this.margin.right;
         this.contentHeight = this.height - this.margin.top - this.margin.bottom;
 
-        // Initialize SVG
-        this.svg = d3.select(`#${containerId}`)
-            .append('svg')
+        // Initialize SVG with error boundary
+        try {
+            this.svg = d3.select(`#${containerId}`)
+                .append('svg')
+                .attr('width', this.width)
+                .attr('height', this.height)
+                .append('g')
+                .attr('transform', `translate(${this.margin.left},${this.margin.top})`);
+        } catch (error) {
+            logger.error('SVG initialization failed:', error);
+            throw error;
+        }
+    }
+
+    private setupResizeHandler(containerId: string): void {
+        const debouncedResize = debounce(() => {
+            this.handleResize(containerId);
+        }, 250);
+
+        this.resizeObserver = new ResizeObserver(debouncedResize);
+        const container = document.getElementById(containerId);
+        if (container) {
+            this.resizeObserver.observe(container);
+        }
+    }
+
+    private handleResize(containerId: string): void {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const bounds = container.getBoundingClientRect();
+        this.width = bounds.width;
+        this.height = bounds.height;
+        this.contentWidth = this.width - this.margin.left - this.margin.right;
+        this.contentHeight = this.height - this.margin.top - this.margin.bottom;
+
+        this.svg
             .attr('width', this.width)
-            .attr('height', this.height)
-            .append('g')
-            .attr('transform', `translate(${this.margin.left},${this.margin.top})`);
+            .attr('height', this.height);
+
+        // Trigger re-render with current data
+        this.updateCurrentVisualization();
+    }
+
+    private createTooltip(): void {
+        this.tooltipDiv = d3.select('body')
+            .append('div')
+            .attr('class', 'gaze-tooltip')
+            .style('opacity', 0)
+            .style('position', 'absolute')
+            .style('pointer-events', 'none')
+            .style('background', 'rgba(0, 0, 0, 0.8)')
+            .style('color', 'white')
+            .style('padding', '8px')
+            .style('border-radius', '4px');
+    }
+
+    private validateData<T>(data: T[]): boolean {
+        if (!Array.isArray(data) || data.length === 0) {
+            logger.warn('Invalid or empty data provided');
+            return false;
+        }
+        return true;
+    }
+
+    private startPerformanceMetrics(): void {
+        this.metrics.renderTime = performance.now();
+        this.metrics.memoryUsage = window.performance?.memory?.usedJSHeapSize || 0;
+    }
+
+    private endPerformanceMetrics(dataPoints: number): void {
+        this.metrics.renderTime = performance.now() - this.metrics.renderTime;
+        this.metrics.dataPoints = dataPoints;
+        this.metrics.memoryUsage = window.performance?.memory?.usedJSHeapSize || 0;
+
+        logger.debug('Performance Metrics:', {
+            renderTime: `${this.metrics.renderTime.toFixed(2)}ms`,
+            dataPoints: this.metrics.dataPoints,
+            memoryUsage: `${(this.metrics.memoryUsage / 1024 / 1024).toFixed(2)}MB`
+        });
+    }
+
+    private optimizeDataForPerformance<T>(data: T[]): T[] {
+        if (!this.options.performanceMode) return data;
+
+        const threshold = 1000; // Maximum points to render in performance mode
+        if (data.length <= threshold) return data;
+
+        // Sample data points
+        const samplingRate = Math.ceil(data.length / threshold);
+        return data.filter((_, index) => index % samplingRate === 0);
     }
 
     public createScanpath(gazeData: GazeData[], fixations: FixationData[], saccades: SaccadeData[]): void {
-        // Clear previous visualization
-        this.svg.selectAll('*').remove();
+        try {
+            this.startPerformanceMetrics();
+            if (!this.validateData(gazeData)) return;
 
-        // Create scales
-        const xScale = d3.scaleLinear()
-            .domain([0, d3.max(gazeData, d => d.x) || 0])
-            .range([0, this.contentWidth]);
+            // Clear and prepare visualization
+            this.svg.selectAll('*').remove();
 
-        const yScale = d3.scaleLinear()
-            .domain([0, d3.max(gazeData, d => d.y) || 0])
-            .range([0, this.contentHeight]);
+            // Optimize data if needed
+            const optimizedGazeData = this.optimizeDataForPerformance(gazeData);
+            const optimizedFixations = this.optimizeDataForPerformance(fixations);
+            const optimizedSaccades = this.optimizeDataForPerformance(saccades);
 
-        // Draw saccades (lines between fixations)
-        const lineGenerator = d3.line<SaccadeData>()
+            // Create scales with error handling
+            const xScale = this.createScale(optimizedGazeData, 'x');
+            const yScale = this.createScale(optimizedGazeData, 'y');
+
+            // Draw visualization elements
+            this.drawSaccades(optimizedSaccades, xScale, yScale);
+            this.drawFixations(optimizedFixations, xScale, yScale);
+            this.addAxes(xScale, yScale);
+            
+            if (this.options.showLegend) {
+                this.addLegend();
+            }
+
+            this.endPerformanceMetrics(gazeData.length);
+        } catch (error) {
+            logger.error('Error creating scanpath visualization:', error);
+            this.showError('Failed to create scanpath visualization');
+        }
+    }
+
+    private createScale(data: any[], field: string): d3.ScaleLinear<number, number> {
+        try {
+            const extent = d3.extent(data, d => d[field]) as [number, number];
+            return d3.scaleLinear()
+                .domain(extent)
+                .range(field === 'x' ? [0, this.contentWidth] : [this.contentHeight, 0]);
+        } catch (error) {
+            logger.error(`Error creating scale for field ${field}:`, error);
+            throw error;
+        }
+    }
+
+    private drawSaccades(saccades: SaccadeData[], xScale: d3.ScaleLinear<number, number>, yScale: d3.ScaleLinear<number, number>): void {
+        const line = d3.line<SaccadeData>()
             .x(d => xScale(d.startX))
             .y(d => yScale(d.startY));
 
@@ -59,14 +220,15 @@ export class GazeDataVisualizer {
             .enter()
             .append('path')
             .attr('class', 'saccade')
-            .attr('d', d => {
-                return `M${xScale(d.startX)},${yScale(d.startY)}L${xScale(d.endX)},${yScale(d.endY)}`;
-            })
+            .attr('d', d => `M${xScale(d.startX)},${yScale(d.startY)}L${xScale(d.endX)},${yScale(d.endY)}`)
             .attr('stroke', '#999')
             .attr('stroke-width', 1)
-            .attr('fill', 'none');
+            .attr('fill', 'none')
+            .on('mouseover', (event, d) => this.showTooltip(event, this.formatSaccadeData(d)))
+            .on('mouseout', () => this.hideTooltip());
+    }
 
-        // Draw fixations (circles)
+    private drawFixations(fixations: FixationData[], xScale: d3.ScaleLinear<number, number>, yScale: d3.ScaleLinear<number, number>): void {
         const radiusScale = d3.scaleLinear()
             .domain([0, d3.max(fixations, d => d.duration) || 0])
             .range([5, 20]);
@@ -81,7 +243,115 @@ export class GazeDataVisualizer {
             .attr('r', d => radiusScale(d.duration))
             .attr('fill', 'rgba(255, 0, 0, 0.5)')
             .attr('stroke', '#ff0000')
+            .attr('stroke-width', 1)
+            .on('mouseover', (event, d) => this.showTooltip(event, this.formatFixationData(d)))
+            .on('mouseout', () => this.hideTooltip());
+    }
+
+    private showTooltip(event: any, content: string): void {
+        this.tooltipDiv
+            .html(content)
+            .style('left', `${event.pageX + 10}px`)
+            .style('top', `${event.pageY - 10}px`)
+            .transition()
+            .duration(200)
+            .style('opacity', 0.9);
+    }
+
+    private hideTooltip(): void {
+        this.tooltipDiv
+            .transition()
+            .duration(200)
+            .style('opacity', 0);
+    }
+
+    private formatFixationData(fixation: FixationData): string {
+        return `
+            <div class="tooltip-content">
+                <strong>Fixation</strong><br>
+                Duration: ${fixation.duration.toFixed(2)}ms<br>
+                Position: (${fixation.x.toFixed(1)}, ${fixation.y.toFixed(1)})<br>
+                Time: ${new Date(fixation.startTime).toISOString().substr(11, 8)}
+            </div>
+        `;
+    }
+
+    private formatSaccadeData(saccade: SaccadeData): string {
+        return `
+            <div class="tooltip-content">
+                <strong>Saccade</strong><br>
+                Length: ${saccade.length.toFixed(2)}px<br>
+                Velocity: ${saccade.velocity.toFixed(2)}°/s<br>
+                Duration: ${saccade.duration.toFixed(2)}ms
+            </div>
+        `;
+    }
+
+    private addAxes(xScale: d3.ScaleLinear<number, number>, yScale: d3.ScaleLinear<number, number>): void {
+        const xAxis = d3.axisBottom(xScale);
+        const yAxis = d3.axisLeft(yScale);
+
+        this.svg.append('g')
+            .attr('class', 'x-axis')
+            .attr('transform', `translate(0,${this.contentHeight})`)
+            .call(xAxis);
+
+        this.svg.append('g')
+            .attr('class', 'y-axis')
+            .call(yAxis);
+    }
+
+    private addLegend(): void {
+        const legend = this.svg.append('g')
+            .attr('class', 'legend')
+            .attr('transform', `translate(${this.contentWidth - 100}, 20)`);
+
+        legend.append('circle')
+            .attr('cx', 0)
+            .attr('cy', 0)
+            .attr('r', 6)
+            .attr('fill', 'rgba(255, 0, 0, 0.5)');
+
+        legend.append('text')
+            .attr('x', 15)
+            .attr('y', 4)
+            .text('Fixation');
+
+        legend.append('line')
+            .attr('x1', 0)
+            .attr('y1', 20)
+            .attr('x2', 20)
+            .attr('y2', 20)
+            .attr('stroke', '#999')
             .attr('stroke-width', 1);
+
+        legend.append('text')
+            .attr('x', 25)
+            .attr('y', 24)
+            .text('Saccade');
+    }
+
+    private showError(message: string): void {
+        this.svg.selectAll('*').remove();
+        
+        this.svg.append('text')
+            .attr('class', 'error-message')
+            .attr('x', this.contentWidth / 2)
+            .attr('y', this.contentHeight / 2)
+            .attr('text-anchor', 'middle')
+            .attr('fill', 'red')
+            .text(message);
+    }
+
+    public cleanup(): void {
+        try {
+            this.resizeObserver?.disconnect();
+            this.tooltipDiv?.remove();
+            this.svg.selectAll('*').remove();
+            logger.info('Visualization cleanup completed');
+        } catch (error) {
+            logger.error('Error during cleanup:', error);
+        }
     }
 
     public createHeatmap(gazeData: GazeData[]): void {
