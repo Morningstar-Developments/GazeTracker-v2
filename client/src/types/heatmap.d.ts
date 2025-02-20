@@ -14,7 +14,7 @@ declare module 'heatmap.js' {
         value?: number;
     }
 
-    class Heatmap {
+    export default class Heatmap {
         constructor(config: HeatmapConfiguration);
         setData(data: { max: number; data: DataPoint[] }): void;
         addData(dataPoint: DataPoint): void;
@@ -23,6 +23,4 @@ declare module 'heatmap.js' {
         getDataURL(): string;
         getValueAt(point: { x: number; y: number }): number;
     }
-
-    export default Heatmap;
 } 

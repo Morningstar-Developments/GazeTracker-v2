@@ -121,23 +121,12 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
     };
 
     // Memoize data processing with null checks
-    const processedData = useMemo(() => {
-        if (!gazeData.length) {
-            return {
-                startTime: 0,
-                endTime: 0,
-                duration: 0,
-                dataPoints: 0
-            };
-        }
-
-        return {
-            startTime: gazeData[0].timestamp,
-            endTime: gazeData[gazeData.length - 1].timestamp,
-            duration: gazeData[gazeData.length - 1].timestamp - gazeData[0].timestamp,
-            dataPoints: gazeData.length
-        };
-    }, [gazeData]);
+    const processedData = useMemo(() => ({
+        startTime: gazeData[0]?.timestamp ?? 0,
+        endTime: gazeData[gazeData.length - 1]?.timestamp ?? 0,
+        duration: gazeData.length > 0 ? gazeData[gazeData.length - 1].timestamp - gazeData[0].timestamp : 0,
+        dataPoints: gazeData.length
+    }), [gazeData]);
 
     // Initialize visualizer
     useEffect(() => {
@@ -353,11 +342,10 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
                                             value={timeRange}
                                             onChange={handleTimeRangeChange}
                                             valueLabelDisplay="auto"
-                                            valueLabelFormat={value => 
-                                                new Date((processedData?.startTime || 0) + ((processedData?.duration || 0) * value / 100))
-                                                    .toISOString()
-                                                    .substr(11, 8)
-                                            }
+                                            valueLabelFormat={value => {
+                                                const timestamp = processedData.startTime + (processedData.duration * value / 100);
+                                                return new Date(timestamp).toISOString().substr(11, 8);
+                                            }}
                                         />
                                     </Box>
                                 </Box>
