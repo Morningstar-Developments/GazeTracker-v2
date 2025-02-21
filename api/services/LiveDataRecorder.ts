@@ -171,7 +171,7 @@ export class LiveDataRecorder extends EventEmitter {
       };
 
       // Match exact CSV format from template
-      return [
+      const formattedLine = [
         timestamp,
         time_24h,
         formatValue(data.x, 3),
@@ -187,6 +187,14 @@ export class LiveDataRecorder extends EventEmitter {
         formatValue(data.HeadPitch, 1),
         formatValue(data.HeadRoll, 1)
       ].join(',') + '\n';
+
+      // Validate formatted line
+      if (formattedLine.split(',').length !== 14) {
+        this.log('Invalid formatted line length', 'warn');
+        return '';
+      }
+
+      return formattedLine;
     } catch (error) {
       this.handleError('Error formatting data point', error);
       return '';
@@ -215,22 +223,49 @@ export class LiveDataRecorder extends EventEmitter {
         return;
       }
 
-      // Write immediately to both streams with error handling
+      // Write immediately to both streams with error handling and synchronization
       try {
         if (this.csvStream?.writable && this.backupStream?.writable) {
-          this.csvStream.write(formattedData);
-          this.backupStream.write(formattedData);
-          
-          this.stats.validPoints++;
-          this.stats.lastTimestamp = data.timestamp;
-          this.stats.lastWriteTime = Date.now();
-          this.stats.dataRate = this.stats.validPoints / ((Date.now() - this.stats.startTime) / 1000);
+          // Write to both streams synchronously
+          this.csvStream.write(formattedData, (error) => {
+            if (error) {
+              this.handleError('Error writing to CSV stream', error);
+              return;
+            }
+            // Ensure backup write happens after main write
+            this.backupStream?.write(formattedData, (backupError) => {
+              if (backupError) {
+                this.handleError('Error writing to backup stream', backupError);
+                return;
+              }
+              
+              // Update stats after successful write
+              this.stats.validPoints++;
+              this.stats.lastTimestamp = data.timestamp;
+              this.stats.lastWriteTime = Date.now();
+              this.stats.dataRate = this.stats.validPoints / ((Date.now() - this.stats.startTime) / 1000);
 
-          // Emit data written event
-          this.emit('data_written', {
-            points: 1,
-            total: this.stats.validPoints,
-            timestamp: format(new Date(), 'HH:mm:ss.SSS')
+              // Emit data written event
+              this.emit('data_written', {
+                points: 1,
+                total: this.stats.validPoints,
+                timestamp: format(new Date(), 'HH:mm:ss.SSS')
+              });
+
+              // Log successful write
+              this.log(`Data point written successfully (${this.stats.validPoints} total)`);
+            });
+          });
+
+          // Emit data received event immediately
+          this.emit('data_received', {
+            timestamp: format(new Date(), 'HH:mm:ss.SSS'),
+            point: {
+              x: data.x.toFixed(3),
+              y: data.y.toFixed(3),
+              confidence: (data.confidence || 0).toFixed(2)
+            },
+            total: this.stats.totalPoints
           });
         } else {
           throw new Error('Write streams are not writable');
@@ -240,17 +275,6 @@ export class LiveDataRecorder extends EventEmitter {
         // Try to reinitialize streams
         this.initializeRecording();
       }
-
-      // Emit data received event
-      this.emit('data_received', {
-        timestamp: format(new Date(), 'HH:mm:ss.SSS'),
-        point: {
-          x: data.x.toFixed(3),
-          y: data.y.toFixed(3),
-          confidence: (data.confidence || 0).toFixed(2)
-        },
-        total: this.stats.totalPoints
-      });
 
     } catch (error) {
       this.handleError('Error recording data point', error);
@@ -298,35 +322,70 @@ export class LiveDataRecorder extends EventEmitter {
     }
   }
 
-  public endRecording(): string {
+  public async endRecording(): Promise<string> {
     try {
-      // Flush any remaining data in buffer
-      if (this.buffer.length > 0) {
-        this.flushBuffer();
-      }
-
-      // Close streams
-      if (this.csvStream) {
+      // Ensure all data is written before closing
+      if (this.csvStream?.writable) {
         this.csvStream.end();
-        this.csvStream = null;
       }
-      if (this.backupStream) {
+      if (this.backupStream?.writable) {
         this.backupStream.end();
-        this.backupStream = null;
       }
 
-      // Log final stats
-      const duration = (Date.now() - this.stats.startTime) / 1000;
-      this.log(`Recording ended:
-        Total Duration: ${duration.toFixed(1)}s
-        Total Points: ${this.stats.totalPoints}
-        Valid Points: ${this.stats.validPoints}
-        Average Rate: ${this.stats.dataRate.toFixed(1)} Hz
-        Data Quality: ${((this.stats.validPoints / this.stats.totalPoints) * 100).toFixed(1)}%
-        Error Count: ${this.stats.errorCount}
-      `);
+      // Wait for streams to finish
+      return new Promise<string>((resolve, reject) => {
+        const cleanup = () => {
+          this.csvStream = null;
+          this.backupStream = null;
+          
+          // Log final stats
+          const duration = (Date.now() - this.stats.startTime) / 1000;
+          this.log(`Recording ended:
+            Total Duration: ${duration.toFixed(1)}s
+            Total Points: ${this.stats.totalPoints}
+            Valid Points: ${this.stats.validPoints}
+            Average Rate: ${this.stats.dataRate.toFixed(1)} Hz
+            Data Quality: ${((this.stats.validPoints / this.stats.totalPoints) * 100).toFixed(1)}%
+            Error Count: ${this.stats.errorCount}
+          `);
+        };
 
-      return this.recordingPath;
+        // Handle stream closing
+        let mainClosed = false;
+        let backupClosed = false;
+
+        this.csvStream?.on('finish', () => {
+          mainClosed = true;
+          if (backupClosed) {
+            cleanup();
+            resolve(this.recordingPath);
+          }
+        });
+
+        this.backupStream?.on('finish', () => {
+          backupClosed = true;
+          if (mainClosed) {
+            cleanup();
+            resolve(this.recordingPath);
+          }
+        });
+
+        this.csvStream?.on('error', (error) => {
+          cleanup();
+          reject(error);
+        });
+
+        this.backupStream?.on('error', (error) => {
+          cleanup();
+          reject(error);
+        });
+
+        // Set timeout for safety
+        setTimeout(() => {
+          cleanup();
+          reject(new Error('Timeout waiting for streams to close'));
+        }, 5000);
+      });
     } catch (error) {
       this.handleError('Error ending recording', error);
       return '';

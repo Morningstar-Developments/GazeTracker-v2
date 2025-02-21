@@ -71,48 +71,68 @@ const SessionControl: React.FC = () => {
       setGazeData(prev => {
         const newData = [...prev, enhancedData];
         
-        if (sessionConfig.isPilot && newData.length % 100 === 0) {
+        // Log every 100 points for both pilot and live sessions
+        if (newData.length % 100 === 0) {
+          const rate = (100 / (Date.now() - (prev[prev.length - 100]?.timestamp || Date.now())) * 1000).toFixed(1);
           setDebugLog(prevLog => [
             ...prevLog,
-            `[${enhancedData.formattedTime}] Collected ${newData.length} data points`
-          ].slice(-100));
-        } else if (!sessionConfig.isPilot && newData.length % 100 === 0) {
-          setDebugLog(prevLog => [
-            ...prevLog,
-            `[${enhancedData.formattedTime}] Recorded ${newData.length} data points to CSV file`
-          ].slice(-100));
+            `[${enhancedData.formattedTime}] ${newData.length} points collected (${rate} pts/sec)`
+          ].slice(-500)); // Increased log size
+        }
+
+        // Log detailed data point info for pilot mode
+        if (sessionConfig.isPilot && data.state !== undefined) {
+          const stateMsg = data.state === 0 ? 'valid' : data.state === -1 ? 'face lost' : 'uncalibrated';
+          setDebugLog(prev => [
+            ...prev,
+            `[${enhancedData.formattedTime}] Gaze: (${data.x.toFixed(3)}, ${data.y.toFixed(3)}) | ` +
+            `State: ${stateMsg} | Conf: ${(data.confidence || 0).toFixed(2)} | ` +
+            `Pupil: ${(data.pupilD || 0).toFixed(1)}mm | ` +
+            `Head Pos: (${(data.HeadX || 0).toFixed(1)}, ${(data.HeadY || 0).toFixed(1)}, ${(data.HeadZ || 0).toFixed(1)}) | ` +
+            `Head Rot: (${(data.HeadYaw || 0).toFixed(1)}°, ${(data.HeadPitch || 0).toFixed(1)}°, ${(data.HeadRoll || 0).toFixed(1)}°)`
+          ].slice(-500));
         }
         
         return newData;
       });
 
-      if (sessionConfig.isPilot) {
-        setDebugLog(prev => [
-          ...prev,
-          `[${enhancedData.formattedTime}] Gaze: (${data.x.toFixed(3)}, ${data.y.toFixed(3)}) | ` +
-          `Conf: ${(data.confidence || 0).toFixed(2)} | ` +
-          `Pupil: ${(data.pupilD || 0).toFixed(1)}mm | ` +
-          `Head Pos: (${(data.HeadX || 0).toFixed(1)}, ${(data.HeadY || 0).toFixed(1)}, ${(data.HeadZ || 0).toFixed(1)}) | ` +
-          `Head Rot: (${(data.HeadYaw || 0).toFixed(1)}°, ${(data.HeadPitch || 0).toFixed(1)}°, ${(data.HeadRoll || 0).toFixed(1)}°)`
-        ].slice(-100));
-      }
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      setDebugLog(prev => [
+        ...prev,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] ⚠️ Error processing gaze data: ${errorMsg}`
+      ].slice(-500));
       console.error('Error processing gaze data:', error);
-      if (sessionConfig.isPilot) {
-        setDebugLog(prev => [
-          ...prev,
-          `[${format(new Date(), 'HH:mm:ss.SSS')}] Error processing gaze data: ${error}`
-        ].slice(-100));
-      }
     }
   }, [startTime, sessionConfig, isPaused]);
+
+  // Add server response logging
+  const logServerResponse = useCallback((action: string, response: any) => {
+    const timestamp = format(new Date(), 'HH:mm:ss.SSS');
+    if (response.error) {
+      setDebugLog(prev => [
+        ...prev,
+        `[${timestamp}] ❌ Server Error (${action}): ${response.error}`
+      ].slice(-500));
+    } else {
+      setDebugLog(prev => [
+        ...prev,
+        `[${timestamp}] ✓ ${action} successful`
+      ].slice(-500));
+    }
+  }, []);
 
   const handleStartTracking = async () => {
     if (!sessionConfig) return;
     
     try {
+      setDebugLog(prev => [
+        ...prev,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] Initializing session...`
+      ]);
+
       // Initialize session first
-      await fetch('/api/sessions', {
+      const response = await fetch('/api/sessions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -123,42 +143,41 @@ const SessionControl: React.FC = () => {
         })
       });
 
+      const result = await response.json();
+      logServerResponse('Session initialization', result);
+
       setGazeData([]);
-      setDebugLog([]);
       setLastLoggedCount(0);
       setStartTime(Date.now());
       setIsPaused(false);
 
-      // Add initialization log
-      if (!sessionConfig.isPilot) {
-        setDebugLog(prev => [
-          ...prev,
-          `[${format(new Date(), 'HH:mm:ss.SSS')}] Initializing live recording session...`,
-          `[${format(new Date(), 'HH:mm:ss.SSS')}] Starting eye tracking calibration...`
-        ]);
-      }
+      setDebugLog(prev => [
+        ...prev,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] Starting eye tracking calibration...`,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] Please follow the calibration points with your eyes...`
+      ]);
 
       startTracking(
         handleGazeData,
         () => {
           setCalibrationComplete(true);
-          // Set start time here to begin recording immediately after calibration
           setStartTime(Date.now());
-          if (sessionConfig.isPilot) {
-            setDebugLog(prev => [...prev, `[${format(new Date(), 'HH:mm:ss.SSS')}] Calibration complete`]);
-          } else {
-            setDebugLog(prev => [
-              ...prev,
-              `[${format(new Date(), 'HH:mm:ss.SSS')}] Calibration complete - Starting live data recording...`,
-              `[${format(new Date(), 'HH:mm:ss.SSS')}] CSV file created and ready for data collection`
-            ]);
-          }
+          setDebugLog(prev => [
+            ...prev,
+            `[${format(new Date(), 'HH:mm:ss.SSS')}] ✓ Calibration complete`,
+            `[${format(new Date(), 'HH:mm:ss.SSS')}] Starting data collection...`
+          ]);
         }
       );
       setIsTracking(true);
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      setDebugLog(prev => [
+        ...prev,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] ❌ Failed to initialize session: ${errorMsg}`
+      ]);
       console.error('Failed to initialize session:', error);
-      alert('Failed to initialize recording session. Please try again.');
+      alert('Failed to initialize recording session. Please check the debug log for details.');
     }
   };
 
@@ -209,10 +228,99 @@ const SessionControl: React.FC = () => {
     }
   };
 
-  const handleExport = () => {
-    // This function is now just a placeholder as the actual export
-    // is handled by RecordingSession.tsx
-    console.log('Export completed');
+  const handleExport = async () => {
+    if (!sessionConfig) {
+      setDebugLog(prev => [
+        ...prev,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] ❌ Export failed: No session configuration found`
+      ]);
+      return;
+    }
+
+    try {
+      setDebugLog(prev => [
+        ...prev,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] Starting data export...`
+      ]);
+
+      // End the session and get data
+      const response = await fetch('/api/sessions/current/end', {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to end session: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      if (!result.files || !result.sessionData) {
+        throw new Error('No session data or files received from server');
+      }
+
+      // Log export progress
+      setDebugLog(prev => [
+        ...prev,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] ✓ Session data retrieved`,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] Raw data file: ${result.files.raw}`,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] Processing data for export...`
+      ]);
+
+      // Create session data object
+      const sessionData = {
+        participantId: sessionConfig.participantId,
+        sessionType: sessionConfig.isPilot ? 'pilot' : 'live',
+        startTime: startTime ? new Date(startTime).toISOString() : null,
+        endTime: new Date().toISOString(),
+        duration: startTime ? Date.now() - startTime : 0,
+        totalDataPoints: result.sessionData.length,
+        gazeData: result.sessionData
+      };
+
+      // Export to CSV
+      await exportToCSV(sessionData);
+      
+      // Download the raw CSV file
+      const csvResponse = await fetch(`/recordings/live/P${sessionConfig.participantId.padStart(3, '0')}/${result.files.raw}`);
+      if (!csvResponse.ok) {
+        throw new Error('Failed to download raw CSV file');
+      }
+      
+      const csvBlob = await csvResponse.blob();
+      const csvUrl = window.URL.createObjectURL(csvBlob);
+      const link = document.createElement('a');
+      link.href = csvUrl;
+      link.download = result.files.raw;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(csvUrl);
+
+      setDebugLog(prev => [
+        ...prev,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] ✓ Exported processed data to CSV`,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] ✓ Downloaded raw data file`,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] Export complete - ${sessionData.totalDataPoints} points saved`
+      ]);
+
+      // Clear the session data
+      setGazeData([]);
+      setStartTime(null);
+      setCalibrationComplete(false);
+
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      setDebugLog(prev => [
+        ...prev,
+        `[${format(new Date(), 'HH:mm:ss.SSS')}] ❌ Export failed: ${errorMsg}`
+      ]);
+      console.error('Export failed:', error);
+      alert('Failed to export data. Please check the debug log for details.');
+    }
   };
 
   if (!sessionConfig) {
@@ -318,26 +426,59 @@ const SessionControl: React.FC = () => {
         </div>
       </div>
 
-      {sessionConfig.isPilot && debugLog.length > 0 && (
-        <div
-          className="debug-log"
-          style={{
-            marginTop: '20px',
-            padding: '10px',
-            backgroundColor: '#f8f9fa',
-            borderRadius: '4px',
-            maxHeight: '200px',
-            overflowY: 'auto',
-            fontSize: '12px',
-            fontFamily: 'monospace'
-          }}
-        >
-          <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>Debug Log:</div>
-          {debugLog.map((log, index) => (
-            <div key={index} style={{ marginBottom: '4px' }}>{log}</div>
-          ))}
+      <div
+        className="debug-log"
+        style={{
+          marginTop: '20px',
+          padding: '15px',
+          backgroundColor: '#1a1a1a',
+          color: '#00ff00',
+          borderRadius: '4px',
+          maxHeight: '300px',
+          overflowY: 'auto',
+          fontSize: '13px',
+          fontFamily: 'monospace',
+          lineHeight: '1.4',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        }}
+      >
+        <div style={{ 
+          marginBottom: '10px', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          borderBottom: '1px solid #333',
+          paddingBottom: '5px'
+        }}>
+          <span style={{ fontWeight: 'bold', color: '#fff' }}>Debug Log</span>
+          <div>
+            <span style={{ fontSize: '12px', color: '#888' }}>
+              Session: {sessionConfig.participantId} | 
+              Mode: {sessionConfig.isPilot ? 'Pilot' : 'Live'} | 
+              Points: {gazeData.length}
+            </span>
+          </div>
         </div>
-      )}
+        {debugLog.map((log, index) => {
+          const isError = log.includes('❌') || log.includes('⚠️');
+          const isSuccess = log.includes('✓');
+          return (
+            <div 
+              key={index} 
+              style={{ 
+                marginBottom: '4px',
+                color: isError ? '#ff4444' : isSuccess ? '#00ff00' : '#fff',
+                paddingLeft: '5px',
+                borderLeft: isError ? '2px solid #ff4444' : 
+                           isSuccess ? '2px solid #00ff00' : 
+                           '2px solid transparent'
+              }}
+            >
+              {log}
+            </div>
+          );
+        })}
+      </div>
 
       <RecordingSession
         isRecording={isTracking}

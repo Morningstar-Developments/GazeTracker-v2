@@ -91,54 +91,37 @@ router.post('/sessions/current/gaze', (req: Request, res: Response) => {
 });
 
 // End session and get CSV file path
-router.post('/sessions/current/end', (req: Request, res: Response) => {
+router.post('/sessions/current/end', async (req: Request, res: Response) => {
   try {
     let csvPath = '';
     let sessionFiles = null;
     let sessionData = null;
     
+    // Get current session data first to ensure we have it
+    sessionData = dataStorage.getCurrentSession();
+    
     if (liveRecorder) {
       // End recording and get the CSV path
-      csvPath = liveRecorder.endRecording();
+      csvPath = await liveRecorder.endRecording();
       liveRecorder = null;
-
-      // Get the current session data and save it
-      sessionData = dataStorage.getCurrentSession();
-      sessionFiles = dataStorage.saveSession();
-      
-      // Clear the session
-      dataStorage.clearSession();
-
-      // Return both the CSV path and the session data
-      res.json({ 
-        message: 'Session ended successfully',
-        files: {
-          raw: path.basename(csvPath),
-          processed: sessionFiles?.processedFile,
-          analytics: sessionFiles?.analyticsFile
-        },
-        sessionData: sessionData.gazeData
-      });
-    } else {
-      // For pilot sessions, just save the data
-      sessionData = dataStorage.getCurrentSession();
-      if (sessionData.config) {
-        sessionFiles = dataStorage.saveSession();
-        dataStorage.clearSession();
-        
-        res.json({
-          message: 'Pilot session ended successfully',
-          sessionData: sessionData.gazeData,
-          files: {
-            raw: sessionFiles.rawFile,
-            processed: sessionFiles.processedFile,
-            analytics: sessionFiles.analyticsFile
-          }
-        });
-      } else {
-        res.status(400).json({ error: 'No active session found' });
-      }
     }
+
+    // Always save session data, even if empty
+    sessionFiles = dataStorage.saveSession();
+    
+    // Clear the session
+    dataStorage.clearSession();
+
+    // Return both the CSV path and the session data
+    res.json({ 
+      message: 'Session ended and data exported successfully',
+      files: {
+        raw: csvPath ? path.basename(csvPath) : null,
+        processed: sessionFiles?.processedFile,
+        analytics: sessionFiles?.analyticsFile
+      },
+      sessionData: sessionData?.gazeData || []
+    });
   } catch (error) {
     console.error('Error ending session:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error occurred' });
