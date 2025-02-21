@@ -43,7 +43,10 @@ export class LiveDataRecorder extends EventEmitter {
     this.csvStream = null;
     this.backupStream = null;
     this.startTime = Date.now();
+    // Initialize recording synchronously to ensure it's ready
     this.initializeRecording();
+    // Start monitoring immediately
+    this.startMonitoring();
   }
 
   private initializeRecording() {
@@ -186,8 +189,9 @@ export class LiveDataRecorder extends EventEmitter {
 
   public recordDataPoint(data: GazeData): void {
     try {
+      // If streams aren't ready, initialize them
       if (!this.csvStream || !this.backupStream) {
-        throw new Error('Recording streams not initialized');
+        this.initializeRecording();
       }
 
       this.stats.totalPoints++;
@@ -210,8 +214,8 @@ export class LiveDataRecorder extends EventEmitter {
         total: this.stats.totalPoints
       });
 
-      // Flush buffer when it reaches the size limit
-      if (this.buffer.length >= this.bufferSize) {
+      // Flush buffer when it reaches the size limit or immediately if first point
+      if (this.buffer.length >= this.bufferSize || this.stats.totalPoints === 1) {
         this.flushBuffer();
       }
     } catch (error) {

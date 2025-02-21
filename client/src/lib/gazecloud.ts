@@ -30,7 +30,14 @@ export const startTracking = (
   }
 
   onGazeData = gazeCallback;
-  window.GazeCloudAPI.OnCalibrationComplete = onCalibrationComplete || (() => {});
+  window.GazeCloudAPI.OnResult = handleGazeData;
+  window.GazeCloudAPI.OnCalibrationComplete = () => {
+    // Ensure gaze data handler is ready before calling calibration complete
+    window.GazeCloudAPI!.OnResult = handleGazeData;
+    if (onCalibrationComplete) {
+      onCalibrationComplete();
+    }
+  };
   window.GazeCloudAPI.StartEyeTracking();
 };
 

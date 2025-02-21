@@ -142,6 +142,8 @@ const SessionControl: React.FC = () => {
         handleGazeData,
         () => {
           setCalibrationComplete(true);
+          // Set start time here to begin recording immediately after calibration
+          setStartTime(Date.now());
           if (sessionConfig.isPilot) {
             setDebugLog(prev => [...prev, `[${format(new Date(), 'HH:mm:ss.SSS')}] Calibration complete`]);
           } else {
