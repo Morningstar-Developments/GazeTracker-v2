@@ -2,12 +2,13 @@ import csv
 from typing import Dict, List, Optional, Tuple
 import io
 from datetime import datetime
-import numpy as np
 import logging
 import psutil
 import time
 from pathlib import Path
 import sys
+import random
+from math import sin, cos
 
 # Configure logging
 logging.basicConfig(
@@ -44,6 +45,125 @@ class CSVExporter:
         }
         logger.info(f"Initialized CSVExporter with buffer size: {buffer_size}")
 
+    def generate_test_data(self, duration_minutes: int = 5, sampling_rate: int = 60) -> List[Dict]:
+        """Generate realistic test data for pilot mode
+        
+        Args:
+            duration_minutes (int): Duration of test data in minutes
+            sampling_rate (int): Number of samples per second
+            
+        Returns:
+            List[Dict]: List of generated data points
+        """
+        logger.info(f"Generating {duration_minutes} minutes of test data at {sampling_rate}Hz")
+        
+        total_points = duration_minutes * 60 * sampling_rate
+        start_time = int(time.time() * 1000)  # Current time in milliseconds
+        interval = 1000 // sampling_rate  # Interval between points in milliseconds
+        
+        test_data = []
+        
+        # Parameters for smooth random movement
+        x_center, y_center = 500, 500  # Center of screen
+        x_amplitude, y_amplitude = 200, 150  # Movement range
+        movement_period = 5.0  # Seconds for one complete oscillation
+        
+        # Head movement parameters
+        head_center = {"x": 0, "y": -10, "z": 45}  # Typical head position
+        head_range = {"x": 3, "y": 3, "z": 5}  # Movement range
+        head_angle_range = 30  # Maximum rotation angle
+        
+        for i in range(total_points):
+            timestamp = start_time + (i * interval)
+            time_factor = i / (sampling_rate * movement_period)
+            
+            # Generate smooth random movement patterns
+            x = x_center + x_amplitude * sin(time_factor) * (0.8 + 0.2 * random.random())
+            y = y_center + y_amplitude * cos(time_factor * 1.3) * (0.8 + 0.2 * random.random())
+            
+            # Add small random variations
+            x += random.gauss(0, 5)
+            y += random.gauss(0, 5)
+            
+            # Generate realistic head movement
+            head_x = head_center["x"] + head_range["x"] * sin(time_factor * 0.7)
+            head_y = head_center["y"] + head_range["y"] * cos(time_factor * 0.5)
+            head_z = head_center["z"] + head_range["z"] * sin(time_factor * 0.3)
+            
+            # Generate head rotation angles
+            head_yaw = head_angle_range * sin(time_factor * 0.4) * 0.5
+            head_pitch = head_angle_range * cos(time_factor * 0.6) * 0.3
+            head_roll = head_angle_range * sin(time_factor * 0.8) * 0.2
+            
+            # Occasionally introduce missing or invalid data (5% chance)
+            if random.random() < 0.05:
+                confidence = random.uniform(0, 0.5)  # Low confidence
+                pupil_d = None  # Missing pupil data
+            else:
+                confidence = random.uniform(0.85, 1.0)  # Normal confidence
+                pupil_d = random.uniform(3, 6)  # Normal pupil diameter range
+            
+            data_point = {
+                "timestamp": timestamp,
+                "x": x,
+                "y": y,
+                "confidence": confidence,
+                "pupilD": pupil_d,
+                "docX": x,  # Using same as x
+                "docY": y,  # Using same as y
+                "HeadX": head_x,
+                "HeadY": head_y,
+                "HeadZ": head_z,
+                "HeadYaw": head_yaw,
+                "HeadPitch": head_pitch,
+                "HeadRoll": head_roll
+            }
+            
+            test_data.append(data_point)
+            
+            # Occasionally simulate blinks (2% chance)
+            if random.random() < 0.02:
+                # Add 3-5 points of blink data
+                blink_duration = random.randint(3, 5)
+                for j in range(blink_duration):
+                    blink_timestamp = timestamp + (j * interval)
+                    blink_point = {
+                        "timestamp": blink_timestamp,
+                        "x": x + random.gauss(0, 10),
+                        "y": y + random.gauss(0, 10),
+                        "confidence": random.uniform(0, 0.3),
+                        "pupilD": random.uniform(2, 2.5),
+                        "docX": x + random.gauss(0, 10),
+                        "docY": y + random.gauss(0, 10),
+                        "HeadX": head_x,
+                        "HeadY": head_y,
+                        "HeadZ": head_z,
+                        "HeadYaw": head_yaw,
+                        "HeadPitch": head_pitch,
+                        "HeadRoll": head_roll
+                    }
+                    test_data.append(blink_point)
+                    i += 1  # Skip ahead to maintain total duration
+        
+        logger.info(f"Generated {len(test_data)} test data points")
+        return test_data
+
+    def export_pilot_test_data(self, duration_minutes: int = 5) -> str:
+        """Export generated pilot test data
+        
+        Args:
+            duration_minutes (int): Duration of test data in minutes
+            
+        Returns:
+            str: CSV string containing the test data
+        """
+        try:
+            test_data = self.generate_test_data(duration_minutes)
+            return self.export_session({"gaze_data": test_data})
+        except Exception as e:
+            logger.error(f"Error generating pilot test data: {str(e)}")
+            return ""
+
     def _check_system_resources(self) -> Tuple[float, float]:
         """Monitor system resource usage
         
@@ -67,7 +187,7 @@ class CSVExporter:
                 logger.debug(f"Empty value for field {field}")
                 return None
             val = float(value)
-            if not np.isfinite(val):
+            if not isinstance(val, (int, float)) or not -float('inf') < val < float('inf'):
                 logger.warning(f"Non-finite value detected in field {field}: {val}")
                 return None
             
@@ -210,7 +330,7 @@ class CSVExporter:
                 
                 # Monitor system resources periodically
                 if self.performance_stats['total_points'] % 100 == 0:
-                    cpu_usage, memory_usage = self._check_system_resources()
+                    _, memory_usage = self._check_system_resources()
                     self.performance_stats['memory_usage'] = memory_usage
 
                 validated_data = self.validate_data_point(data)

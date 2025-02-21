@@ -36,33 +36,59 @@ export const exportToJSON = async (data: SessionData) => {
 export const exportToCSV = async (data: SessionData) => {
   const filename = getFormattedFilename(data, '.csv');
   
-  // Create CSV data matching template format
+  // Create CSV data matching template format exactly
   const csvData = Papa.unparse({
     fields: [
       'timestamp', 'time_24h', 'x', 'y', 'confidence', 'pupilD',
       'docX', 'docY', 'HeadX', 'HeadY', 'HeadZ',
       'HeadYaw', 'HeadPitch', 'HeadRoll'
     ],
-    data: data.gazeData.map(point => ({
-      timestamp: point.timestamp,
-      time_24h: format(new Date(point.timestamp), 'yyyy-MM-dd HH:mm:ss'),
-      x: point.x?.toFixed(3),
-      y: point.y?.toFixed(3),
-      confidence: point.confidence?.toFixed(2),
-      pupilD: point.pupilD?.toFixed(1),
-      docX: point.x?.toFixed(3),  // Using x as docX
-      docY: point.y?.toFixed(3),  // Using y as docY
-      HeadX: point.HeadX?.toFixed(1),
-      HeadY: point.HeadY?.toFixed(1),
-      HeadZ: point.HeadZ?.toFixed(1),
-      HeadYaw: point.HeadYaw?.toFixed(1),
-      HeadPitch: point.HeadPitch?.toFixed(1),
-      HeadRoll: point.HeadRoll?.toFixed(1)
-    }))
+    data: data.gazeData.map(point => {
+      // Ensure timestamp is a valid number
+      const timestamp = typeof point.timestamp === 'number' ? point.timestamp : Date.now();
+      
+      // Format time_24h exactly as in template
+      const time_24h = format(new Date(timestamp), 'yyyy-MM-dd HH:mm:ss');
+      
+      // Handle numeric values with proper precision and empty values
+      const formatValue = (value: number | undefined | null, precision: number): string => {
+        if (value === undefined || value === null || isNaN(value)) return '';
+        return value.toFixed(precision);
+      };
+
+      return {
+        timestamp,                                    // Raw timestamp
+        time_24h,                                    // Formatted time
+        x: formatValue(point.x, 3),                  // 3 decimal places
+        y: formatValue(point.y, 3),                  // 3 decimal places
+        confidence: formatValue(point.confidence, 2), // 2 decimal places
+        pupilD: formatValue(point.pupilD, 1),        // 1 decimal place
+        docX: formatValue(point.x, 3),               // Using x as docX, 3 decimal places
+        docY: formatValue(point.y, 3),               // Using y as docY, 3 decimal places
+        HeadX: formatValue(point.HeadX, 1),          // 1 decimal place
+        HeadY: formatValue(point.HeadY, 1),          // 1 decimal place
+        HeadZ: formatValue(point.HeadZ, 1),          // 1 decimal place
+        HeadYaw: formatValue(point.HeadYaw, 1),      // 1 decimal place
+        HeadPitch: formatValue(point.HeadPitch, 1),  // 1 decimal place
+        HeadRoll: formatValue(point.HeadRoll, 1)     // 1 decimal place
+      };
+    })
   });
 
-  const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
-  saveAs(blob, filename);
+  // Add UTF-8 BOM for Excel compatibility
+  const BOM = '\uFEFF';
+  const blob = new Blob([BOM + csvData], { type: 'text/csv;charset=utf-8;' });
+  
+  // Force download to Downloads folder
+  const link = document.createElement('a');
+  link.href = window.URL.createObjectURL(blob);
+  link.download = filename;
+  
+  // Append to document, click, and cleanup
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(link.href);
 };
 
 export const exportToXLSX = async (data: SessionData) => {
