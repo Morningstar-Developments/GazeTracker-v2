@@ -1,46 +1,49 @@
+import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
 import { format } from 'date-fns';
 import { GazeData } from '../types/gazeData';
-import { EventEmitter } from 'events';
 
 interface RecordingStats {
+  startTime: number;
   totalPoints: number;
   validPoints: number;
   errorCount: number;
-  lastTimestamp: number;
+  lastTimestamp: number | null;
+  lastWriteTime: number | null;
   dataRate: number;
-  startTime: number;
-  lastWriteTime: number;
 }
 
 export class LiveDataRecorder extends EventEmitter {
-  private csvStream: fs.WriteStream | null = null;
-  private backupStream: fs.WriteStream | null = null;
+  private outputDir: string;
   private recordingPath: string = '';
   private backupPath: string = '';
-  private readonly EXPECTED_FRAME_INTERVAL = 16.67; // ~60Hz
-  private readonly HEALTH_CHECK_INTERVAL = 5000; // Check health every 5 seconds
+  private csvStream: fs.WriteStream | null;
+  private backupStream: fs.WriteStream | null;
+  private participantId: string;
+  private startTime: number;
+  private buffer: GazeData[] = [];
+  private bufferSize = 1000; // Match CSVExporter buffer size
   private healthCheckInterval: NodeJS.Timeout | null = null;
-
+  private readonly HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
   private stats: RecordingStats = {
+    startTime: Date.now(),
     totalPoints: 0,
     validPoints: 0,
     errorCount: 0,
-    lastTimestamp: 0,
-    dataRate: 0,
-    startTime: Date.now(),
-    lastWriteTime: Date.now()
+    lastTimestamp: null,
+    lastWriteTime: null,
+    dataRate: 0
   };
 
-  constructor(
-    private participantId: string,
-    private outputDir: string = 'recordings',
-    private debugMode: boolean = false
-  ) {
+  constructor(participantId: string) {
     super();
+    this.participantId = participantId;
+    this.outputDir = path.join(process.cwd(), 'recordings');
+    this.csvStream = null;
+    this.backupStream = null;
+    this.startTime = Date.now();
     this.initializeRecording();
-    this.startMonitoring();
   }
 
   private initializeRecording() {
@@ -51,8 +54,8 @@ export class LiveDataRecorder extends EventEmitter {
       }
 
       const timestamp = format(Date.now(), 'yyyyMMdd_HHmmss');
-      this.recordingPath = path.join(this.outputDir, `P${this.participantId.padStart(3, '0')}_${timestamp}.csv`);
-      this.backupPath = path.join(this.outputDir, `P${this.participantId.padStart(3, '0')}_${timestamp}_backup.csv`);
+      this.recordingPath = path.join(this.outputDir, `P${this.participantId.padStart(3, '0')}_live_${timestamp}.csv`);
+      this.backupPath = path.join(this.outputDir, `P${this.participantId.padStart(3, '0')}_live_${timestamp}_backup.csv`);
 
       // Write headers exactly matching template format
       const headers = 'timestamp,time_24h,x,y,confidence,pupilD,docX,docY,HeadX,HeadY,HeadZ,HeadYaw,HeadPitch,HeadRoll\n';
@@ -70,8 +73,12 @@ export class LiveDataRecorder extends EventEmitter {
         highWaterMark: 64 * 1024 // 64KB buffer
       });
 
-      this.csvStream.on('error', (error) => this.handleError('CSV stream error', error));
-      this.backupStream.on('error', (error) => this.handleError('Backup stream error', error));
+      if (this.csvStream) {
+        this.csvStream.on('error', (error) => this.handleError('CSV stream error', error));
+      }
+      if (this.backupStream) {
+        this.backupStream.on('error', (error) => this.handleError('Backup stream error', error));
+      }
       
       this.log('Recording session initialized successfully');
     } catch (error) {
@@ -113,86 +120,122 @@ export class LiveDataRecorder extends EventEmitter {
   }
 
   private formatDataPoint(data: GazeData): string {
-    const time24h = format(new Date(data.timestamp), 'yyyy-MM-dd HH:mm:ss');
-    
-    // Format each field with exact precision matching template
-    return [
-      data.timestamp,
-      time24h,
-      (data.x || 0).toFixed(3),           // 3 decimal places
-      (data.y || 0).toFixed(3),           // 3 decimal places
-      (data.confidence || 0).toFixed(2),   // 2 decimal places
-      data.pupilD ? data.pupilD.toFixed(1) : '', // 1 decimal place
-      (data.docX || 0).toFixed(3),        // 3 decimal places
-      (data.docY || 0).toFixed(3),        // 3 decimal places
-      data.HeadX ? data.HeadX.toFixed(1) : '',   // 1 decimal place
-      data.HeadY ? data.HeadY.toFixed(1) : '',   // 1 decimal place
-      data.HeadZ ? data.HeadZ.toFixed(1) : '',   // 1 decimal place
-      data.HeadYaw ? data.HeadYaw.toFixed(1) : '',     // 1 decimal place
-      data.HeadPitch ? data.HeadPitch.toFixed(1) : '', // 1 decimal place
-      data.HeadRoll ? data.HeadRoll.toFixed(1) : ''    // 1 decimal place
-    ].join(',') + '\n';
+    try {
+      // Format timestamp and time_24h exactly like CSVExporter
+      const timestamp = data.timestamp || Date.now();
+      const time_24h = format(new Date(timestamp), 'yyyy-MM-dd HH:mm:ss');
+
+      // Format numeric values with proper precision
+      const formatValue = (value: number | undefined | null, precision: number): string => {
+        if (value === undefined || value === null || isNaN(value)) return '';
+        return value.toFixed(precision);
+      };
+
+      // Match exact CSV format from template
+      return [
+        timestamp,
+        time_24h,
+        formatValue(data.x, 3),
+        formatValue(data.y, 3),
+        formatValue(data.confidence, 2),
+        formatValue(data.pupilD, 1),
+        formatValue(data.docX, 3),
+        formatValue(data.docY, 3),
+        formatValue(data.HeadX, 1),
+        formatValue(data.HeadY, 1),
+        formatValue(data.HeadZ, 1),
+        formatValue(data.HeadYaw, 1),
+        formatValue(data.HeadPitch, 1),
+        formatValue(data.HeadRoll, 1)
+      ].join(',') + '\n';
+    } catch (error) {
+      this.handleError('Error formatting data point', error);
+      return '';
+    }
   }
 
-  public async recordDataPoint(data: GazeData): Promise<void> {
+  public recordDataPoint(data: GazeData): void {
     try {
-      this.stats.totalPoints++;
-      
-      // Validate data point
-      if (!this.validateDataPoint(data)) {
-        this.log(`Invalid data point: ${JSON.stringify(data)}`, 'warn');
-        return;
+      if (!this.csvStream || !this.backupStream) {
+        throw new Error('Recording streams not initialized');
       }
 
-      // Format data point
-      const row = this.formatDataPoint(data);
+      this.stats.totalPoints++;
+      this.buffer.push(data);
 
-      // Write immediately to both streams
-      if (this.csvStream && this.backupStream) {
-        await Promise.all([
-          new Promise<void>((resolve, reject) => {
-            this.csvStream!.write(row, (error) => {
-              if (error) reject(error);
-              else resolve();
-            });
-          }),
-          new Promise<void>((resolve, reject) => {
-            this.backupStream!.write(row, (error) => {
-              if (error) reject(error);
-              else resolve();
-            });
-          })
-        ]);
+      // Update stats with safe timestamp handling
+      const timestamp = data.timestamp || Date.now();
+      this.stats.lastTimestamp = timestamp;
+      this.stats.lastWriteTime = Date.now();
+      this.stats.dataRate = this.stats.totalPoints / ((Date.now() - this.stats.startTime) / 1000);
 
-        this.stats.validPoints++;
-        this.stats.lastTimestamp = data.timestamp;
-        this.stats.lastWriteTime = Date.now();
-
-        // Calculate frame interval
-        const frameInterval = this.stats.lastTimestamp ? 
-          data.timestamp - this.stats.lastTimestamp : 
-          this.EXPECTED_FRAME_INTERVAL;
-
-        // Emit warning if frame interval is too large
-        if (frameInterval > this.EXPECTED_FRAME_INTERVAL * 2) {
-          this.emit('warning', {
-            type: 'frame_drop',
-            message: `Large frame interval detected: ${frameInterval.toFixed(2)}ms`,
-            timestamp: Date.now()
-          });
-        }
-
-        if (this.debugMode) {
-          this.log(`Recorded data point: ${row.trim()}`);
-        }
+      // Flush buffer when it reaches the size limit
+      if (this.buffer.length >= this.bufferSize) {
+        this.flushBuffer();
       }
     } catch (error) {
       this.handleError('Error recording data point', error);
-      throw error; // Re-throw to notify caller
+    }
+  }
+
+  private flushBuffer(): void {
+    try {
+      if (!this.csvStream || !this.backupStream) {
+        throw new Error('Recording streams not initialized');
+      }
+
+      const formattedData = this.buffer.map(point => this.formatDataPoint(point)).join('');
+      
+      this.csvStream.write(formattedData);
+      this.backupStream.write(formattedData);
+      
+      const validPoints = this.buffer.length;
+      this.buffer = [];
+      this.stats.validPoints += validPoints;
+    } catch (error) {
+      this.handleError('Error flushing buffer', error);
+    }
+  }
+
+  public endRecording(): string {
+    try {
+      // Flush any remaining data in buffer
+      if (this.buffer.length > 0) {
+        this.flushBuffer();
+      }
+
+      // Close streams
+      if (this.csvStream) {
+        this.csvStream.end();
+        this.csvStream = null;
+      }
+      if (this.backupStream) {
+        this.backupStream.end();
+        this.backupStream = null;
+      }
+
+      // Log final stats
+      const duration = (Date.now() - this.stats.startTime) / 1000;
+      this.log(`Recording ended:
+        Total Duration: ${duration.toFixed(1)}s
+        Total Points: ${this.stats.totalPoints}
+        Valid Points: ${this.stats.validPoints}
+        Average Rate: ${this.stats.dataRate.toFixed(1)} Hz
+        Data Quality: ${((this.stats.validPoints / this.stats.totalPoints) * 100).toFixed(1)}%
+        Error Count: ${this.stats.errorCount}
+      `);
+
+      return this.recordingPath;
+    } catch (error) {
+      this.handleError('Error ending recording', error);
+      return '';
     }
   }
 
   private startMonitoring() {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+    }
     this.healthCheckInterval = setInterval(() => {
       this.performHealthCheck();
     }, this.HEALTH_CHECK_INTERVAL);
@@ -200,7 +243,7 @@ export class LiveDataRecorder extends EventEmitter {
 
   private performHealthCheck() {
     const now = Date.now();
-    const timeSinceLastWrite = now - this.stats.lastWriteTime;
+    const timeSinceLastWrite = this.stats.lastWriteTime ? now - this.stats.lastWriteTime : 0;
     const duration = (now - this.stats.startTime) / 1000; // duration in seconds
     
     this.stats.dataRate = this.stats.totalPoints / duration;
@@ -219,64 +262,22 @@ export class LiveDataRecorder extends EventEmitter {
       Valid Points: ${this.stats.validPoints}
       Data Rate: ${this.stats.dataRate.toFixed(1)} Hz
       Data Quality: ${((this.stats.validPoints / this.stats.totalPoints) * 100).toFixed(1)}%
-      Last Write: ${new Date(this.stats.lastWriteTime).toISOString()}
+      Last Write: ${this.stats.lastWriteTime ? new Date(this.stats.lastWriteTime).toISOString() : 'Never'}
     `);
   }
 
-  private handleError(context: string, error: any) {
+  private handleError(message: string, error: unknown): void {
     this.stats.errorCount++;
-    const errorMessage = `${context}: ${error.message || error}`;
-    this.log(errorMessage, 'error');
-    this.emit('error', {
-      context,
-      error: error.message || error,
-      timestamp: Date.now(),
-      stats: { ...this.stats }
-    });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    this.log(`${message}: ${errorMessage}`, 'error');
+    this.emit('error', { message, error: errorMessage });
   }
 
-  private log(message: string, level: 'info' | 'error' | 'warn' = 'info') {
-    const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
-    console[level](logMessage);
-
-    if (this.debugMode) {
-      const logPath = path.join(this.outputDir, `P${this.participantId.padStart(3, '0')}_recording.log`);
-      fs.appendFileSync(logPath, logMessage + '\n');
-    }
-  }
-
-  public endRecording(): string {
-    try {
-      if (this.healthCheckInterval) {
-        clearInterval(this.healthCheckInterval);
-      }
-
-      // Ensure all data is written before closing
-      if (this.csvStream) {
-        this.csvStream.end();
-        this.csvStream = null;
-      }
-
-      if (this.backupStream) {
-        this.backupStream.end();
-        this.backupStream = null;
-      }
-
-      const duration = (Date.now() - this.stats.startTime) / 1000;
-      this.log(`Recording ended:
-        Total Duration: ${duration.toFixed(1)}s
-        Total Points: ${this.stats.totalPoints}
-        Valid Points: ${this.stats.validPoints}
-        Average Rate: ${(this.stats.totalPoints / duration).toFixed(1)} Hz
-        Data Quality: ${((this.stats.validPoints / this.stats.totalPoints) * 100).toFixed(1)}%
-        Error Count: ${this.stats.errorCount}
-      `);
-
-      return this.recordingPath;
-    } catch (error) {
-      this.handleError('Error ending recording', error);
-      return this.recordingPath;
-    }
+  private log(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
+    const timestamp = format(new Date(), 'HH:mm:ss.SSS');
+    const formattedMessage = `[${timestamp}] ${message}`;
+    
+    console[level](formattedMessage);
+    this.emit('log', { level, message: formattedMessage });
   }
 } 

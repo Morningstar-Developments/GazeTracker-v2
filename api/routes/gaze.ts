@@ -65,15 +65,25 @@ router.post('/sessions/current/end', (req: Request, res: Response) => {
   try {
     let csvPath = '';
     if (liveRecorder) {
+      // End recording and get the CSV path
       csvPath = liveRecorder.endRecording();
       liveRecorder = null;
+
+      // Get the current session data
+      const sessionData = dataStorage.getCurrentSession();
+      
+      // Clear the session
+      dataStorage.clearSession();
+
+      // Return both the CSV path and the session data
+      res.json({ 
+        message: 'Session ended',
+        csvPath: csvPath,
+        sessionData: sessionData
+      });
+    } else {
+      res.status(400).json({ error: 'No active recording session found' });
     }
-    
-    dataStorage.clearSession();
-    res.json({ 
-      message: 'Session ended',
-      csvPath: csvPath 
-    });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }
@@ -103,10 +113,27 @@ router.post('/pilot/generate-test-data', (req: Request, res: Response) => {
     };
 
     PythonShell.run('csv_exporter.py', options).then(messages => {
+      // Parse CSV data into JSON
       const csvData = messages.join('\n');
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename=P${participantId.padStart(3, '0')}_pilot_${format(new Date(), 'yyyyMMdd_HHmmss')}.csv`);
-      res.send(csvData);
+      const rows = csvData.split('\n');
+      const headers = rows[0].split(',');
+      const gazeData = rows.slice(1).map(row => {
+        const values = row.split(',');
+        const dataPoint: any = {};
+        headers.forEach((header, index) => {
+          const value = values[index];
+          if (value === '') {
+            dataPoint[header] = null;
+          } else if (header === 'timestamp' || header === 'time_24h') {
+            dataPoint[header] = value;
+          } else {
+            dataPoint[header] = parseFloat(value);
+          }
+        });
+        return dataPoint;
+      });
+
+      res.json({ gazeData });
     }).catch(error => {
       console.error('Error generating test data:', error);
       res.status(500).json({ error: 'Failed to generate test data' });

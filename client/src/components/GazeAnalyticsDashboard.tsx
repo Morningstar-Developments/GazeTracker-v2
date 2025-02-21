@@ -29,6 +29,13 @@ import BasicStats from './visualizations/BasicStats';
 import GazePath from './visualizations/GazePath';
 import PupilDilation from './visualizations/PupilDilation';
 import HeadMovement from './visualizations/HeadMovement';
+import {
+    exportToJSON,
+    exportToCSV,
+    exportToXLSX,
+    exportToDocx,
+    exportToMarkdown
+} from '../utils/exportUtils';
 
 // Error boundary component
 class ErrorBoundary extends React.Component<
@@ -245,21 +252,74 @@ const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({ session
     // Export data
     const handleExport = useCallback(() => {
         try {
-            const exportData = {
+            const sessionData = {
+                participantId: 'analytics', // Using a default ID for analytics exports
+                sessionType: 'analysis',
+                startTime: new Date(data[0]?.timestamp || Date.now()).toISOString(),
+                endTime: new Date(data[data.length - 1]?.timestamp || Date.now()).toISOString(),
+                duration: data.length > 0 ? data[data.length - 1].timestamp - data[0].timestamp : 0,
+                totalDataPoints: data.length,
                 gazeData: data,
                 analyticsResult,
                 timeRange,
                 settings
             };
-            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `gaze-analysis-${new Date().toISOString()}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+
+            // Show export format options
+            const exportFormatDialog = document.createElement('div');
+            exportFormatDialog.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: white;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                z-index: 1000;
+            `;
+            exportFormatDialog.innerHTML = `
+                <h4 style="margin-top: 0;">Select Export Format</h4>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button id="csvExport" style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">CSV</button>
+                    <button id="jsonExport" style="padding: 8px 16px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer;">JSON</button>
+                    <button id="xlsxExport" style="padding: 8px 16px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;">Excel</button>
+                    <button id="docxExport" style="padding: 8px 16px; background: #673AB7; color: white; border: none; border-radius: 4px; cursor: pointer;">Word</button>
+                    <button id="mdExport" style="padding: 8px 16px; background: #607D8B; color: white; border: none; border-radius: 4px; cursor: pointer;">Markdown</button>
+                </div>
+            `;
+            document.body.appendChild(exportFormatDialog);
+
+            // Add event listeners
+            document.getElementById('csvExport')?.addEventListener('click', () => {
+                exportToCSV(sessionData);
+                document.body.removeChild(exportFormatDialog);
+            });
+            document.getElementById('jsonExport')?.addEventListener('click', () => {
+                exportToJSON(sessionData);
+                document.body.removeChild(exportFormatDialog);
+            });
+            document.getElementById('xlsxExport')?.addEventListener('click', () => {
+                exportToXLSX(sessionData);
+                document.body.removeChild(exportFormatDialog);
+            });
+            document.getElementById('docxExport')?.addEventListener('click', () => {
+                exportToDocx(sessionData);
+                document.body.removeChild(exportFormatDialog);
+            });
+            document.getElementById('mdExport')?.addEventListener('click', () => {
+                exportToMarkdown(sessionData);
+                document.body.removeChild(exportFormatDialog);
+            });
+
+            // Add click outside to close
+            const handleClickOutside = (event: MouseEvent) => {
+                if (!exportFormatDialog.contains(event.target as Node)) {
+                    document.body.removeChild(exportFormatDialog);
+                    document.removeEventListener('mousedown', handleClickOutside);
+                }
+            };
+            document.addEventListener('mousedown', handleClickOutside);
         } catch (error) {
             console.error('Error exporting data:', error);
             setError('Failed to export data');

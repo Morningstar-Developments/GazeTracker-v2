@@ -77,21 +77,32 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
 
   const handleExport = async () => {
     try {
-      // End the session and get CSV path
+      // End the session and get data
       const response = await fetch('/api/sessions/current/end', {
         method: 'POST'
       });
       const result = await response.json();
       
-      if (result.csvPath) {
-        // Download the CSV file
-        const filename = result.csvPath.split('/').pop();
-        const link = document.createElement('a');
-        link.href = `/recordings/${filename}`;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      if (result.sessionData) {
+        // Create session data object for export
+        const sessionData = {
+          participantId,
+          sessionType: isPilot ? 'pilot' : 'live',
+          startTime: startTime ? new Date(startTime).toISOString() : null,
+          endTime: new Date().toISOString(),
+          duration: startTime ? Date.now() - startTime : 0,
+          totalDataPoints: result.sessionData.length,
+          gazeData: result.sessionData
+        };
+
+        // Export using the same format as pilot data
+        await exportToCSV(sessionData);
+      } else {
+        throw new Error('No session data received from server');
       }
 
       setShowExportOptions(false);
@@ -155,14 +166,200 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
           <div style={{ marginTop: '20px' }}>
             <h4>Select Export Format:</h4>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button onClick={() => handleExport()} style={{
+              <button onClick={async () => {
+                try {
+                  const response = await fetch('/api/sessions/current/end', {
+                    method: 'POST'
+                  });
+                  const result = await response.json();
+                  
+                  if (result.error) {
+                    throw new Error(result.error);
+                  }
+
+                  if (result.sessionData) {
+                    const sessionData = {
+                      participantId,
+                      sessionType: isPilot ? 'pilot' : 'live',
+                      startTime: startTime ? new Date(startTime).toISOString() : null,
+                      endTime: new Date().toISOString(),
+                      duration: startTime ? Date.now() - startTime : 0,
+                      totalDataPoints: result.sessionData.length,
+                      gazeData: result.sessionData
+                    };
+
+                    await exportToCSV(sessionData);
+                  }
+                  setShowExportOptions(false);
+                  onExport();
+                } catch (error) {
+                  console.error('Export failed:', error);
+                  alert('Failed to export data. Please try again.');
+                }
+              }} style={{
                 padding: '8px 16px',
-                backgroundColor: '#9e9e9e',
+                backgroundColor: '#4CAF50',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: 'pointer'
               }}>CSV</button>
+              
+              <button onClick={async () => {
+                try {
+                  const response = await fetch('/api/sessions/current/end', {
+                    method: 'POST'
+                  });
+                  const result = await response.json();
+                  
+                  if (result.error) {
+                    throw new Error(result.error);
+                  }
+
+                  if (result.sessionData) {
+                    const sessionData = {
+                      participantId,
+                      sessionType: isPilot ? 'pilot' : 'live',
+                      startTime: startTime ? new Date(startTime).toISOString() : null,
+                      endTime: new Date().toISOString(),
+                      duration: startTime ? Date.now() - startTime : 0,
+                      totalDataPoints: result.sessionData.length,
+                      gazeData: result.sessionData
+                    };
+
+                    await exportToJSON(sessionData);
+                  }
+                  setShowExportOptions(false);
+                  onExport();
+                } catch (error) {
+                  console.error('Export failed:', error);
+                  alert('Failed to export data. Please try again.');
+                }
+              }} style={{
+                padding: '8px 16px',
+                backgroundColor: '#2196F3',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}>JSON</button>
+
+              <button onClick={async () => {
+                try {
+                  const response = await fetch('/api/sessions/current/end', {
+                    method: 'POST'
+                  });
+                  const result = await response.json();
+                  
+                  if (result.error) {
+                    throw new Error(result.error);
+                  }
+
+                  if (result.sessionData) {
+                    const sessionData = {
+                      participantId,
+                      sessionType: isPilot ? 'pilot' : 'live',
+                      startTime: startTime ? new Date(startTime).toISOString() : null,
+                      endTime: new Date().toISOString(),
+                      duration: startTime ? Date.now() - startTime : 0,
+                      totalDataPoints: result.sessionData.length,
+                      gazeData: result.sessionData
+                    };
+
+                    await exportToXLSX(sessionData);
+                  }
+                  setShowExportOptions(false);
+                  onExport();
+                } catch (error) {
+                  console.error('Export failed:', error);
+                  alert('Failed to export data. Please try again.');
+                }
+              }} style={{
+                padding: '8px 16px',
+                backgroundColor: '#FF9800',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}>Excel</button>
+
+              <button onClick={async () => {
+                try {
+                  const response = await fetch('/api/sessions/current/end', {
+                    method: 'POST'
+                  });
+                  const result = await response.json();
+                  
+                  if (result.error) {
+                    throw new Error(result.error);
+                  }
+
+                  if (result.sessionData) {
+                    const sessionData = {
+                      participantId,
+                      sessionType: isPilot ? 'pilot' : 'live',
+                      startTime: startTime ? new Date(startTime).toISOString() : null,
+                      endTime: new Date().toISOString(),
+                      duration: startTime ? Date.now() - startTime : 0,
+                      totalDataPoints: result.sessionData.length,
+                      gazeData: result.sessionData
+                    };
+
+                    await exportToDocx(sessionData);
+                  }
+                  setShowExportOptions(false);
+                  onExport();
+                } catch (error) {
+                  console.error('Export failed:', error);
+                  alert('Failed to export data. Please try again.');
+                }
+              }} style={{
+                padding: '8px 16px',
+                backgroundColor: '#673AB7',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}>Word</button>
+
+              <button onClick={async () => {
+                try {
+                  const response = await fetch('/api/sessions/current/end', {
+                    method: 'POST'
+                  });
+                  const result = await response.json();
+                  
+                  if (result.error) {
+                    throw new Error(result.error);
+                  }
+
+                  if (result.sessionData) {
+                    const sessionData = {
+                      participantId,
+                      sessionType: isPilot ? 'pilot' : 'live',
+                      startTime: startTime ? new Date(startTime).toISOString() : null,
+                      endTime: new Date().toISOString(),
+                      duration: startTime ? Date.now() - startTime : 0,
+                      totalDataPoints: result.sessionData.length,
+                      gazeData: result.sessionData
+                    };
+
+                    await exportToMarkdown(sessionData);
+                  }
+                  setShowExportOptions(false);
+                  onExport();
+                } catch (error) {
+                  console.error('Export failed:', error);
+                  alert('Failed to export data. Please try again.');
+                }
+              }} style={{
+                padding: '8px 16px',
+                backgroundColor: '#607D8B',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}>Markdown</button>
             </div>
           </div>
         )}

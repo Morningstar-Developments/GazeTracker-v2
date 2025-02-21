@@ -4,6 +4,7 @@ import type { GazeData } from '../types/gazeData';
 import RecordingSession from './RecordingSession';
 import SessionConfig, { SessionConfigData } from './SessionConfig';
 import { format } from 'date-fns';
+import { exportToCSV } from '../utils/exportUtils';
 
 interface EnhancedGazeData extends GazeData {
   participantId: string;
@@ -209,20 +210,23 @@ const SessionControl: React.FC = () => {
                     duration: 5
                   })
                 })
-                .then(response => response.blob())
-                .then(blob => {
-                  const timestamp = new Date().toISOString()
-                    .replace(/[-:]/g, '')
-                    .replace('T', '_')
-                    .slice(0, 15);
-                  const filename = `P${sessionConfig.participantId.padStart(3, '0')}_pilot_${timestamp}.csv`;
-                  const link = document.createElement('a');
-                  link.href = window.URL.createObjectURL(blob);
-                  link.download = filename;
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                  window.URL.revokeObjectURL(link.href);
+                .then(response => response.json())
+                .then(data => {
+                  if (data.error) {
+                    throw new Error(data.error);
+                  }
+
+                  const sessionData = {
+                    participantId: sessionConfig.participantId,
+                    sessionType: 'pilot',
+                    startTime: new Date().toISOString(),
+                    endTime: new Date(Date.now() + (5 * 60 * 1000)).toISOString(),
+                    duration: 5 * 60 * 1000,
+                    totalDataPoints: data.gazeData.length,
+                    gazeData: data.gazeData
+                  };
+
+                  exportToCSV(sessionData);
                 })
                 .catch(error => {
                   console.error('Failed to generate test data:', error);
