@@ -79,31 +79,39 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
       participantId,
       sessionType: isPilot ? 'pilot' : 'live',
       startTime: startTime ? new Date(startTime).toISOString() : null,
-      endTime: Date.now() ? new Date(Date.now()).toISOString() : null,
+      endTime: new Date().toISOString(),
       duration: startTime ? Date.now() - startTime : 0,
       totalDataPoints: gazeData.length,
-      gazeData
+      gazeData: gazeData.map(point => ({
+        ...point,
+        timestamp: Date.now(),
+        time_24h: new Date().toISOString()
+      }))
     };
 
-    switch (format) {
-      case 'json':
-        exportToJSON(sessionData);
-        break;
-      case 'csv':
-        exportToCSV(sessionData);
-        break;
-      case 'xlsx':
-        exportToXLSX(sessionData);
-        break;
-      case 'docx':
-        exportToDocx(sessionData);
-        break;
-      case 'md':
-        exportToMarkdown(sessionData);
-        break;
+    try {
+      switch (format) {
+        case 'json':
+          exportToJSON(sessionData);
+          break;
+        case 'csv':
+          exportToCSV(sessionData);
+          break;
+        case 'xlsx':
+          exportToXLSX(sessionData);
+          break;
+        case 'docx':
+          exportToDocx(sessionData);
+          break;
+        case 'md':
+          exportToMarkdown(sessionData);
+          break;
+      }
+      setShowExportOptions(false);
+      onExport();
+    } catch (error) {
+      console.error('Export failed:', error);
     }
-    setShowExportOptions(false);
-    onExport();
   };
 
   const handleDiscard = () => {
@@ -280,13 +288,13 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
             fontSize: isMinimized ? '11px' : '13px'
           }}>
             <div style={{ marginBottom: '4px' }}>
-              <span>Position: </span>
+              <span>Gaze: </span>
               <span style={{ fontWeight: 'bold' }}>
-                ({Math.round(lastGazePoint.x)}, {Math.round(lastGazePoint.y)})
+                ({lastGazePoint.x.toFixed(3)}, {lastGazePoint.y.toFixed(3)})
               </span>
             </div>
             {lastGazePoint.confidence !== undefined && (
-              <div>
+              <div style={{ marginBottom: '4px' }}>
                 <span>Confidence: </span>
                 <span style={{ 
                   fontWeight: 'bold',
@@ -294,6 +302,34 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
                          lastGazePoint.confidence > 0.5 ? '#ff9800' : '#f44336'
                 }}>
                   {(lastGazePoint.confidence * 100).toFixed(1)}%
+                </span>
+              </div>
+            )}
+            {lastGazePoint.pupilD !== undefined && (
+              <div style={{ marginBottom: '4px' }}>
+                <span>Pupil Diameter: </span>
+                <span style={{ fontWeight: 'bold' }}>
+                  {lastGazePoint.pupilD.toFixed(1)}mm
+                </span>
+              </div>
+            )}
+            {(lastGazePoint.HeadX !== undefined || lastGazePoint.HeadY !== undefined || lastGazePoint.HeadZ !== undefined) && (
+              <div style={{ marginBottom: '4px' }}>
+                <span>Head Position: </span>
+                <span style={{ fontWeight: 'bold' }}>
+                  ({lastGazePoint.HeadX?.toFixed(1) || '0.0'}, 
+                   {lastGazePoint.HeadY?.toFixed(1) || '0.0'}, 
+                   {lastGazePoint.HeadZ?.toFixed(1) || '0.0'})
+                </span>
+              </div>
+            )}
+            {(lastGazePoint.HeadYaw !== undefined || lastGazePoint.HeadPitch !== undefined || lastGazePoint.HeadRoll !== undefined) && (
+              <div>
+                <span>Head Rotation: </span>
+                <span style={{ fontWeight: 'bold' }}>
+                  ({lastGazePoint.HeadYaw?.toFixed(1) || '0.0'}°, 
+                   {lastGazePoint.HeadPitch?.toFixed(1) || '0.0'}°, 
+                   {lastGazePoint.HeadRoll?.toFixed(1) || '0.0'}°)
                 </span>
               </div>
             )}

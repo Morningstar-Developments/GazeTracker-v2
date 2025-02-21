@@ -83,7 +83,11 @@ const SessionControl: React.FC = () => {
       if (sessionConfig.isPilot) {
         setDebugLog(prev => [
           ...prev,
-          `[${enhancedData.formattedTime}] Gaze position: (${Math.round(data.x)}, ${Math.round(data.y)}) | Confidence: ${(data.confidence || 0).toFixed(2)}`
+          `[${enhancedData.formattedTime}] Gaze: (${data.x.toFixed(3)}, ${data.y.toFixed(3)}) | ` +
+          `Conf: ${(data.confidence || 0).toFixed(2)} | ` +
+          `Pupil: ${(data.pupilD || 0).toFixed(1)}mm | ` +
+          `Head Pos: (${(data.HeadX || 0).toFixed(1)}, ${(data.HeadY || 0).toFixed(1)}, ${(data.HeadZ || 0).toFixed(1)}) | ` +
+          `Head Rot: (${(data.HeadYaw || 0).toFixed(1)}°, ${(data.HeadPitch || 0).toFixed(1)}°, ${(data.HeadRoll || 0).toFixed(1)}°)`
         ].slice(-100));
       }
     } catch (error) {
@@ -165,28 +169,9 @@ const SessionControl: React.FC = () => {
   };
 
   const handleExport = () => {
-    const exportData = {
-      sessionInfo: {
-        startTime: startTime,
-        endTime: Date.now(),
-        duration: startTime ? Date.now() - startTime : 0,
-        totalDataPoints: gazeData.length
-      },
-      gazeData: gazeData
-    };
-
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: 'application/json'
-    });
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `gaze-tracking-session-${new Date().toISOString()}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // This function is now just a placeholder as the actual export
+    // is handled by RecordingSession.tsx
+    console.log('Export completed');
   };
 
   if (!sessionConfig) {

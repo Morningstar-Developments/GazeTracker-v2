@@ -29,37 +29,12 @@ const getDataPath = (data: SessionData): string => {
 
 export const exportToJSON = async (data: SessionData) => {
   const filename = getFormattedFilename(data, '.json');
-  const path = getDataPath(data);
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  
-  try {
-    const response = await fetch('/api/save-file', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        path: `${path}/${filename}`,
-        content: await blob.text(),
-      }),
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to save file');
-    }
-    
-    // Also offer download to user
-    saveAs(blob, filename);
-  } catch (error) {
-    console.error('Error saving file:', error);
-    // Fallback to client-side download only
-    saveAs(blob, filename);
-  }
+  saveAs(blob, filename);
 };
 
 export const exportToCSV = async (data: SessionData) => {
   const filename = getFormattedFilename(data, '.csv');
-  const path = getDataPath(data);
   
   // Create CSV data matching template format
   const csvData = Papa.unparse({
@@ -87,35 +62,11 @@ export const exportToCSV = async (data: SessionData) => {
   });
 
   const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
-  
-  try {
-    const response = await fetch('/api/save-file', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        path: `${path}/${filename}`,
-        content: await blob.text(),
-      }),
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to save file');
-    }
-    
-    // Also offer download to user
-    saveAs(blob, filename);
-  } catch (error) {
-    console.error('Error saving file:', error);
-    // Fallback to client-side download only
-    saveAs(blob, filename);
-  }
+  saveAs(blob, filename);
 };
 
 export const exportToXLSX = async (data: SessionData) => {
   const filename = getFormattedFilename(data, '.xlsx');
-  const path = getDataPath(data);
   
   const wb = XLSX.utils.book_new();
   
@@ -134,44 +85,32 @@ export const exportToXLSX = async (data: SessionData) => {
   // Gaze Data Sheet
   const gazeDataArray = data.gazeData.map(point => [
     point.timestamp,
-    point.x,
-    point.y,
-    JSON.stringify(point.leftEye),
-    JSON.stringify(point.rightEye),
-    point.confidence
+    format(new Date(point.timestamp), 'yyyy-MM-dd HH:mm:ss'),
+    point.x?.toFixed(3),
+    point.y?.toFixed(3),
+    point.confidence?.toFixed(2),
+    point.pupilD?.toFixed(1),
+    point.docX?.toFixed(3),
+    point.docY?.toFixed(3),
+    point.HeadX?.toFixed(1),
+    point.HeadY?.toFixed(1),
+    point.HeadZ?.toFixed(1),
+    point.HeadYaw?.toFixed(1),
+    point.HeadPitch?.toFixed(1),
+    point.HeadRoll?.toFixed(1)
   ]);
-  gazeDataArray.unshift(['Timestamp', 'X', 'Y', 'Left Eye', 'Right Eye', 'Confidence']);
+  gazeDataArray.unshift([
+    'Timestamp', 'Time 24h', 'X', 'Y', 'Confidence', 'PupilD',
+    'DocX', 'DocY', 'HeadX', 'HeadY', 'HeadZ',
+    'HeadYaw', 'HeadPitch', 'HeadRoll'
+  ]);
   const gazeWs = XLSX.utils.aoa_to_sheet(gazeDataArray);
   XLSX.utils.book_append_sheet(wb, gazeWs, 'Gaze Data');
 
   // Generate blob
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  
-  try {
-    const response = await fetch('/api/save-file', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        path: `${path}/${filename}`,
-        content: await blob.arrayBuffer(),
-        isBase64: true
-      }),
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to save file');
-    }
-    
-    // Also offer download to user
-    saveAs(blob, filename);
-  } catch (error) {
-    console.error('Error saving file:', error);
-    // Fallback to client-side download only
-    saveAs(blob, filename);
-  }
+  saveAs(blob, filename);
 };
 
 export const exportToDocx = (data: SessionData) => {
@@ -266,30 +205,69 @@ function calculateDataSummary(gazeData: GazeData[]) {
   const summary = {
     avgConfidence: 0,
     avgPupilD: 0,
-    headRange: {
-      x: 0,
-      y: 0,
-      z: 0
+    headMovement: {
+      x: { min: 0, max: 0, range: 0 },
+      y: { min: 0, max: 0, range: 0 },
+      z: { min: 0, max: 0, range: 0 },
+      yaw: { min: 0, max: 0, range: 0 },
+      pitch: { min: 0, max: 0, range: 0 },
+      roll: { min: 0, max: 0, range: 0 }
     }
   };
 
   if (gazeData.length === 0) return summary;
 
   // Calculate averages
-  const confidenceSum = gazeData.reduce((sum, point) => sum + (point.confidence || 0), 0);
-  const pupilDSum = gazeData.reduce((sum, point) => sum + (point.pupilD || 0), 0);
+  const validConfidence = gazeData.filter(point => point.confidence !== undefined);
+  const validPupilD = gazeData.filter(point => point.pupilD !== undefined);
+  
+  summary.avgConfidence = validConfidence.length > 0
+    ? validConfidence.reduce((sum, point) => sum + (point.confidence || 0), 0) / validConfidence.length
+    : 0;
+  
+  summary.avgPupilD = validPupilD.length > 0
+    ? validPupilD.reduce((sum, point) => sum + (point.pupilD || 0), 0) / validPupilD.length
+    : 0;
 
   // Calculate head movement ranges
   const headX = gazeData.map(point => point.HeadX || 0);
   const headY = gazeData.map(point => point.HeadY || 0);
   const headZ = gazeData.map(point => point.HeadZ || 0);
+  const headYaw = gazeData.map(point => point.HeadYaw || 0);
+  const headPitch = gazeData.map(point => point.HeadPitch || 0);
+  const headRoll = gazeData.map(point => point.HeadRoll || 0);
 
-  summary.avgConfidence = confidenceSum / gazeData.length;
-  summary.avgPupilD = pupilDSum / gazeData.length;
-  summary.headRange = {
-    x: Math.max(...headX) - Math.min(...headX),
-    y: Math.max(...headY) - Math.min(...headY),
-    z: Math.max(...headZ) - Math.min(...headZ)
+  summary.headMovement = {
+    x: {
+      min: Math.min(...headX),
+      max: Math.max(...headX),
+      range: Math.max(...headX) - Math.min(...headX)
+    },
+    y: {
+      min: Math.min(...headY),
+      max: Math.max(...headY),
+      range: Math.max(...headY) - Math.min(...headY)
+    },
+    z: {
+      min: Math.min(...headZ),
+      max: Math.max(...headZ),
+      range: Math.max(...headZ) - Math.min(...headZ)
+    },
+    yaw: {
+      min: Math.min(...headYaw),
+      max: Math.max(...headYaw),
+      range: Math.max(...headYaw) - Math.min(...headYaw)
+    },
+    pitch: {
+      min: Math.min(...headPitch),
+      max: Math.max(...headPitch),
+      range: Math.max(...headPitch) - Math.min(...headPitch)
+    },
+    roll: {
+      min: Math.min(...headRoll),
+      max: Math.max(...headRoll),
+      range: Math.max(...headRoll) - Math.min(...headRoll)
+    }
   };
 
   return summary;
@@ -304,9 +282,9 @@ function generateDataSummary(gazeData: GazeData[]): Paragraph[] {
         new TextRun({ text: `Average Confidence: ${summary.avgConfidence.toFixed(2)}`, break: 1 }),
         new TextRun({ text: `Average Pupil Diameter: ${summary.avgPupilD.toFixed(2)}`, break: 1 }),
         new TextRun({ text: 'Head Movement Range:', break: 1 }),
-        new TextRun({ text: `  X: ${summary.headRange.x.toFixed(2)} units`, break: 1 }),
-        new TextRun({ text: `  Y: ${summary.headRange.y.toFixed(2)} units`, break: 1 }),
-        new TextRun({ text: `  Z: ${summary.headRange.z.toFixed(2)} units`, break: 1 })
+        new TextRun({ text: `  X: ${summary.headMovement.x.range.toFixed(2)} units`, break: 1 }),
+        new TextRun({ text: `  Y: ${summary.headMovement.y.range.toFixed(2)} units`, break: 1 }),
+        new TextRun({ text: `  Z: ${summary.headMovement.z.range.toFixed(2)} units`, break: 1 })
       ]
     })
   ];
@@ -322,23 +300,32 @@ function generateSampleDataTable(gazeData: GazeData[]): Paragraph[] {
           new TableCell({ children: [new Paragraph('X')] }),
           new TableCell({ children: [new Paragraph('Y')] }),
           new TableCell({ children: [new Paragraph('Confidence')] }),
-          new TableCell({ children: [new Paragraph('Head Position')] })
+          new TableCell({ children: [new Paragraph('PupilD')] }),
+          new TableCell({ children: [new Paragraph('Head Position (X,Y,Z)')] }),
+          new TableCell({ children: [new Paragraph('Head Rotation (Yaw,Pitch,Roll)')] })
         ]
       }),
-      // Data rows
-      ...gazeData.map(point => new TableRow({
+      // Data rows (first 10 points only)
+      ...gazeData.slice(0, 10).map(point => new TableRow({
         children: [
-          new TableCell({ children: [new Paragraph(new Date(point.timestamp).toLocaleTimeString())] }),
-          new TableCell({ children: [new Paragraph(point.x.toFixed(2))] }),
-          new TableCell({ children: [new Paragraph(point.y.toFixed(2))] }),
+          new TableCell({ children: [new Paragraph(format(new Date(point.timestamp), 'HH:mm:ss.SSS'))] }),
+          new TableCell({ children: [new Paragraph(point.x.toFixed(3))] }),
+          new TableCell({ children: [new Paragraph(point.y.toFixed(3))] }),
           new TableCell({ children: [new Paragraph((point.confidence || 0).toFixed(2))] }),
+          new TableCell({ children: [new Paragraph((point.pupilD || 0).toFixed(1))] }),
           new TableCell({ children: [new Paragraph(
-            `(${point.HeadX?.toFixed(2) || 0}, ${point.HeadY?.toFixed(2) || 0}, ${point.HeadZ?.toFixed(2) || 0})`
+            `(${point.HeadX?.toFixed(1) || '0.0'}, ${point.HeadY?.toFixed(1) || '0.0'}, ${point.HeadZ?.toFixed(1) || '0.0'})`
+          )] }),
+          new TableCell({ children: [new Paragraph(
+            `(${point.HeadYaw?.toFixed(1) || '0.0'}, ${point.HeadPitch?.toFixed(1) || '0.0'}, ${point.HeadRoll?.toFixed(1) || '0.0'})`
           )] })
         ]
       }))
     ]
   });
 
-  return [new Paragraph({ children: [table] })];
+  return [
+    new Paragraph({ text: 'Sample Data Points (First 10)', heading: HeadingLevel.HEADING_3 }),
+    new Paragraph({ children: [table] })
+  ];
 } 
