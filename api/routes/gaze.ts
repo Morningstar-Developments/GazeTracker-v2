@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { DataStorageService, SessionConfig } from '../services/dataStorage';
 import { GazeData } from '../types/gazeData';
-import { CSVExporter } from '@core/csv_exporter';
+import { PythonShell } from 'python-shell';
 import { format } from 'date-fns';
+import path from 'path';
 
 const router = Router();
 const dataStorage = new DataStorageService();
@@ -65,14 +66,27 @@ router.delete('/sessions/current', (req: Request, res: Response) => {
 router.post('/pilot/generate-test-data', (req: Request, res: Response) => {
   try {
     const { participantId, duration } = req.body;
-    const csvExporter = new CSVExporter();
-    const testData = csvExporter.export_pilot_test_data(duration);
     
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=P${participantId.padStart(3, '0')}_pilot_${format(new Date(), 'yyyyMMdd_HHmmss')}.csv`);
-    res.send(testData);
+    const options = {
+      mode: 'text' as const,
+      pythonPath: 'python3',
+      pythonOptions: ['-u'],
+      scriptPath: path.join(__dirname, '../../core'),
+      args: [duration.toString()]
+    };
+
+    PythonShell.run('csv_exporter.py', options).then(messages => {
+      const csvData = messages.join('\n');
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename=P${participantId.padStart(3, '0')}_pilot_${format(new Date(), 'yyyyMMdd_HHmmss')}.csv`);
+      res.send(csvData);
+    }).catch(error => {
+      console.error('Error generating test data:', error);
+      res.status(500).json({ error: 'Failed to generate test data' });
+    });
   } catch (error) {
-    res.status(400).json({ error: (error as Error).message });
+    console.error('Error in generate-test-data route:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

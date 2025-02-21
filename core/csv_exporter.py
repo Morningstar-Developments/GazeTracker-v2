@@ -202,14 +202,14 @@ class CSVExporter:
             ts = int(timestamp)
             current_time = int(time.time() * 1000)
             
-            # Check if timestamp is within reasonable range (between 2024 and 2025)
-            if not (1704067200000 <= ts <= 1735689600000):
-                logger.warning(f"Timestamp outside valid range: {ts}")
+            # Check if timestamp is within reasonable range (not more than 1 hour in the past)
+            if ts < current_time - (60 * 60 * 1000):  # 1 hour in milliseconds
+                logger.warning(f"Timestamp too far in past: {ts}")
                 return None
                 
-            # Check if timestamp is not in the future
-            if ts > current_time + 1000:  # Allow 1 second future tolerance
-                logger.warning(f"Future timestamp detected: {ts}")
+            # Check if timestamp is not too far in the future (not more than 1 second ahead)
+            if ts > current_time + 1000:  # 1 second in milliseconds
+                logger.warning(f"Timestamp too far in future: {ts}")
                 return None
                 
             # Check for timestamp sequence
@@ -368,3 +368,72 @@ class CSVExporter:
             return int(timestamp)
         except:
             return int(datetime.now().timestamp() * 1000)
+
+    def _generate_test_data(self, duration_minutes=5):
+        """Generate test data for a specified duration."""
+        # Get current time in milliseconds
+        current_time = int(time.time() * 1000)
+        
+        # Sample interval (approximately 60Hz)
+        sample_interval = 16  # milliseconds
+        
+        # Calculate total number of samples
+        total_samples = int((duration_minutes * 60 * 1000) / sample_interval)
+        
+        # Generate test data
+        data = []
+        for i in range(total_samples):
+            timestamp = current_time + (i * sample_interval)
+            time_24h = datetime.fromtimestamp(timestamp / 1000).strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Generate random gaze data
+            x = random.uniform(490, 560)
+            y = random.uniform(610, 660)
+            confidence = random.uniform(0, 1)
+            pupil_d = random.uniform(2, 6) if confidence > 0.8 else ''
+            
+            # Generate random document coordinates (same as gaze in this test)
+            doc_x = x
+            doc_y = y
+            
+            # Generate random head pose data
+            head_x = round(i * 0.0001, 1)  # Slowly increasing X
+            head_y = -7.0  # Fixed Y
+            head_z = 45.0 + (i * 0.0001)  # Slowly increasing Z
+            head_yaw = round(i * 0.0001, 1)  # Slowly increasing yaw
+            head_pitch = 9.0 if i < total_samples/2 else 8.9  # Step change halfway
+            head_roll = round(i * 0.0001, 1)  # Slowly increasing roll
+            
+            # Create data point
+            data_point = {
+                'timestamp': timestamp,
+                'time_24h': time_24h,
+                'x': round(x, 3),
+                'y': round(y, 3),
+                'confidence': round(confidence, 2),
+                'pupilD': round(pupil_d, 1) if pupil_d != '' else '',
+                'docX': round(doc_x, 3),
+                'docY': round(doc_y, 3),
+                'HeadX': head_x,
+                'HeadY': head_y,
+                'HeadZ': round(head_z, 1),
+                'HeadYaw': round(head_yaw, 1),
+                'HeadPitch': round(head_pitch, 1),
+                'HeadRoll': round(head_roll, 1)
+            }
+            data.append(data_point)
+        
+        return data
+
+if __name__ == "__main__":
+    import sys
+    
+    # Get duration from command line argument, default to 5 minutes
+    duration = 5 if len(sys.argv) < 2 else int(sys.argv[1])
+    
+    # Create exporter and generate test data
+    exporter = CSVExporter()
+    csv_data = exporter.export_pilot_test_data(duration)
+    
+    # Print CSV data to stdout
+    print(csv_data)
