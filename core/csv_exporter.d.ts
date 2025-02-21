@@ -1,4 +1,4 @@
-declare module 'csv_exporter' {
+declare module '@core/csv_exporter' {
     export class CSVExporter {
         constructor(buffer_size?: number);
         

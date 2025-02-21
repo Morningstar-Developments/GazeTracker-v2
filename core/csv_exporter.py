@@ -3,7 +3,6 @@ from typing import Dict, List, Optional, Tuple
 import io
 from datetime import datetime
 import logging
-import psutil
 import time
 from pathlib import Path
 import sys
@@ -40,8 +39,7 @@ class CSVExporter:
             'total_points': 0,
             'valid_points': 0,
             'invalid_points': 0,
-            'processing_time': 0,
-            'memory_usage': 0
+            'processing_time': 0
         }
         logger.info(f"Initialized CSVExporter with buffer size: {buffer_size}")
 
@@ -164,21 +162,13 @@ class CSVExporter:
             logger.error(f"Error generating pilot test data: {str(e)}")
             return ""
 
-    def _check_system_resources(self) -> Tuple[float, float]:
-        """Monitor system resource usage
-        
-        Returns:
-            Tuple[float, float]: CPU usage percentage, memory usage percentage
-        """
+    def _check_system_resources(self) -> None:
+        """Simple resource check"""
         try:
-            cpu_percent = psutil.cpu_percent()
-            memory_percent = psutil.Process().memory_percent()
-            if cpu_percent > 80 or memory_percent > 80:
-                logger.warning(f"High resource usage - CPU: {cpu_percent}%, Memory: {memory_percent}%")
-            return cpu_percent, memory_percent
+            if len(self.data_buffer) > self.buffer_size * 2:
+                logger.warning(f"Buffer size exceeds recommended limit: {len(self.data_buffer)}")
         except Exception as e:
-            logger.error(f"Error monitoring system resources: {str(e)}")
-            return 0.0, 0.0
+            logger.error(f"Error checking resources: {str(e)}")
 
     def validate_numeric_field(self, value: any, field: str) -> Optional[float]:
         """Validate and convert numeric fields with detailed error logging"""
@@ -321,18 +311,12 @@ class CSVExporter:
                 'total_points': 0,
                 'valid_points': 0,
                 'invalid_points': 0,
-                'processing_time': 0,
-                'memory_usage': 0
+                'processing_time': 0
             }
             
             for data in self.session_data.get("gaze_data", []):
                 self.performance_stats['total_points'] += 1
                 
-                # Monitor system resources periodically
-                if self.performance_stats['total_points'] % 100 == 0:
-                    _, memory_usage = self._check_system_resources()
-                    self.performance_stats['memory_usage'] = memory_usage
-
                 validated_data = self.validate_data_point(data)
                 if validated_data:
                     self.data_buffer.append(validated_data)
@@ -366,7 +350,6 @@ class CSVExporter:
         logger.info(f"Invalid points: {stats['invalid_points']} ({(stats['invalid_points']/stats['total_points']*100):.1f}%)")
         logger.info(f"Processing time: {stats['processing_time']:.2f} seconds")
         logger.info(f"Processing rate: {stats['total_points']/stats['processing_time']:.1f} points/second")
-        logger.info(f"Memory usage: {stats['memory_usage']:.1f}%")
 
         if stats['invalid_points'] > 0:
             logger.warning(f"High invalid data rate: {stats['invalid_points']} points")

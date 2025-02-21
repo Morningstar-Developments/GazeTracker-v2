@@ -2,9 +2,12 @@
   "name": "gazetracker",
   "version": "1.0.0",
   "description": "Eye tracking application using GazeCloud API",
+  "_moduleAliases": {
+    "@core": "core"
+  },
   "scripts": {
     "start": "concurrently --kill-others-on-fail \"npm run server\" \"npm run client\"",
-    "server": "nodemon --watch api/**/* -e ts,json --exec ts-node api/server.ts",
+    "server": "NODE_PATH=. nodemon --watch api -e ts,json --exec \"ts-node -r module-alias/register api/server.ts\"",
     "client": "cd client && npm start",
     "dev": "npm run start",
     "dev:server": "nodemon --watch api/**/* -e ts,json api/server.ts",
@@ -31,7 +34,8 @@
     "d3": "^7.8.5",
     "d3-hexbin": "^0.2.2",
     "date-fns": "^4.1.0",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "module-alias": "^2.2.3"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.4.2",

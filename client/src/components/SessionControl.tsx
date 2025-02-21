@@ -196,6 +196,51 @@ const SessionControl: React.FC = () => {
           >
             {isTracking ? 'Stop Recording' : 'Start Recording'}
           </button>
+          {sessionConfig.isPilot && !isTracking && (
+            <button
+              onClick={() => {
+                fetch('/api/pilot/generate-test-data', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    participantId: sessionConfig.participantId,
+                    duration: 5
+                  })
+                })
+                .then(response => response.blob())
+                .then(blob => {
+                  const timestamp = new Date().toISOString()
+                    .replace(/[-:]/g, '')
+                    .replace('T', '_')
+                    .slice(0, 15);
+                  const filename = `P${sessionConfig.participantId.padStart(3, '0')}_pilot_${timestamp}.csv`;
+                  const link = document.createElement('a');
+                  link.href = window.URL.createObjectURL(blob);
+                  link.download = filename;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  window.URL.revokeObjectURL(link.href);
+                })
+                .catch(error => {
+                  console.error('Failed to generate test data:', error);
+                  alert('Failed to generate test data. Please try again.');
+                });
+              }}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#2196F3',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              Generate Test Data
+            </button>
+          )}
         </div>
         <div style={{ fontSize: '14px', color: '#666' }}>
           <div>Participant ID: {sessionConfig.participantId}</div>

@@ -1,3 +1,4 @@
+require('../module-alias');
 import express from 'express';
 import cors from 'cors';
 import net from 'net';
