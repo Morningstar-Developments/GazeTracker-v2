@@ -1,85 +1,94 @@
 import React, { useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import type { GazeData } from '../types/gazeData';
+import { GazeData } from '../types/gazeData';
 
-const Heatmap: React.FC = () => {
+interface HeatmapProps {
+  gazeData: GazeData[];
+  width: number;
+  height: number;
+}
+
+const Heatmap: React.FC<HeatmapProps> = ({ gazeData, width, height }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Fetch or receive gaze data
-  const { data: gazeData } = useQuery<GazeData[]>({
-    queryKey: ['gaze-data'],
-    queryFn: async () => {
-      // Mock data for now
-      return [];
-    }
-  });
-
   useEffect(() => {
-    if (!canvasRef.current || !gazeData) return;
+    if (!canvasRef.current || gazeData.length === 0) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size to window size
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    // Set canvas dimensions
+    canvas.width = width;
+    canvas.height = height;
 
-    // Clear previous heatmap
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
 
     // Create heatmap data
-    const heatmapData = new Uint8ClampedArray(canvas.width * canvas.height * 4);
+    const heatmapData = new Uint8ClampedArray(width * height * 4);
 
-    // Process gaze points
+    // Process gaze points with improved visualization
     gazeData.forEach(point => {
+      if (typeof point.x !== 'number' || typeof point.y !== 'number') return;
+
       const x = Math.floor(point.x);
       const y = Math.floor(point.y);
 
-      if (x >= 0 && x < canvas.width && y >= 0 && y < canvas.height) {
-        const radius = 30;
-        const intensity = (point.confidence || 0.5) * 255;
+      if (x >= 0 && x < width && y >= 0 && y < height) {
+        // Customize these parameters for better visualization
+        const radius = 40; // Increased radius for better visibility
+        const baseIntensity = 0.7; // Base intensity
+        const confidenceBoost = (point.confidence || 0.5) * 0.3; // Confidence affects intensity
+        const intensity = (baseIntensity + confidenceBoost) * 255;
 
-        // Add gaussian blur around each point
+        // Add gaussian blur with improved color gradient
         for (let i = -radius; i <= radius; i++) {
           for (let j = -radius; j <= radius; j++) {
             const currentX = x + i;
             const currentY = y + j;
 
-            if (currentX >= 0 && currentX < canvas.width && currentY >= 0 && currentY < canvas.height) {
+            if (currentX >= 0 && currentX < width && currentY >= 0 && currentY < height) {
               const distance = Math.sqrt(i * i + j * j);
-              const gaussianFactor = Math.exp(-(distance * distance) / (2 * (radius / 2) * (radius / 2)));
-              const index = (currentY * canvas.width + currentX) * 4;
+              const gaussianFactor = Math.exp(-(distance * distance) / (2 * (radius / 3) * (radius / 3)));
+              const index = (currentY * width + currentX) * 4;
 
-              heatmapData[index] = Math.min(255, heatmapData[index] + intensity * gaussianFactor); // Red
-              heatmapData[index + 1] = 0; // Green
-              heatmapData[index + 2] = 0; // Blue
-              heatmapData[index + 3] = Math.min(255, heatmapData[index + 3] + intensity * gaussianFactor); // Alpha
+              // Create a color gradient based on intensity
+              const gradientFactor = gaussianFactor * intensity;
+              heatmapData[index] = Math.min(255, heatmapData[index] + gradientFactor); // Red
+              heatmapData[index + 1] = Math.min(255, heatmapData[index + 1] + gradientFactor * 0.5); // Green
+              heatmapData[index + 2] = Math.min(255, heatmapData[index + 2] + gradientFactor * 0.2); // Blue
+              heatmapData[index + 3] = Math.min(200, heatmapData[index + 3] + gradientFactor * 0.8); // Alpha
             }
           }
         }
       }
     });
 
-    // Create and draw image data
-    const imageData = new ImageData(heatmapData, canvas.width, canvas.height);
+    // Create ImageData and apply it to canvas
+    const imageData = new ImageData(heatmapData, width, height);
     ctx.putImageData(imageData, 0, 0);
-  }, [gazeData]);
+
+    // Apply post-processing effects
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.fillRect(0, 0, width, height);
+    ctx.globalCompositeOperation = 'source-over';
+
+  }, [gazeData, width, height]);
 
   return (
-    <div className="heatmap">
-      <canvas
-        ref={canvasRef}
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          pointerEvents: 'none',
-          opacity: 0.6,
-          zIndex: 9998
-        }}
-      />
-    </div>
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        pointerEvents: 'none',
+        opacity: 0.7,
+        zIndex: 9998,
+        mixBlendMode: 'multiply'
+      }}
+    />
   );
 };
 

@@ -9,6 +9,9 @@ import {
   exportToMarkdown
 } from '../utils/exportUtils';
 import { saveAs } from 'file-saver';
+import Heatmap from './Heatmap';
+import { getClickAccuracyStats } from '../lib/gazecloud';
+import { GazeAnalytics } from '../lib/analyticsService';
 
 interface RecordingSessionProps {
   isRecording: boolean;
@@ -44,6 +47,15 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
   const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
   const [lastGazePoint, setLastGazePoint] = useState<GazeData | null>(null);
   const [showKillswitchConfirm, setShowKillswitchConfirm] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [accuracyStats, setAccuracyStats] = useState<{
+    totalClicks: number;
+    accurateClicks: number;
+    accuracy: number;
+    averageDistance: number;
+  } | null>(null);
+  const [showMetrics, setShowMetrics] = useState(false);
+  const [metrics, setMetrics] = useState<ReturnType<typeof GazeAnalytics.computeMetrics> | null>(null);
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
@@ -77,6 +89,39 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
       setDataPoints(gazeData.length);
     }
   }, [gazeData]);
+
+  useEffect(() => {
+    if (!isRecording || isPaused) return;
+
+    const intervalId = setInterval(() => {
+      const stats = getClickAccuracyStats();
+      if (stats) {
+        setAccuracyStats({
+          totalClicks: stats.totalClicks,
+          accurateClicks: stats.accurateClicks,
+          accuracy: stats.accuracy,
+          averageDistance: stats.averageDistance
+        });
+      }
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [isRecording, isPaused]);
+
+  useEffect(() => {
+    if (!isRecording || isPaused || gazeData.length === 0) return;
+
+    const intervalId = setInterval(() => {
+      try {
+        const newMetrics = GazeAnalytics.computeMetrics(gazeData);
+        setMetrics(newMetrics);
+      } catch (error) {
+        console.error('Error computing metrics:', error);
+      }
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [isRecording, isPaused, gazeData]);
 
   const handleExport = async () => {
     try {
@@ -413,193 +458,312 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
     );
   }
 
-  const sessionWindow = (
-    <div className={`recording-session ${isMinimized ? 'minimized' : ''}`} style={{
+  const metricsPanel = metrics && showMetrics ? (
+    <div style={{
       position: 'fixed',
-      right: '20px',
-      bottom: '20px',
+      left: '20px',
+      top: '20px',
       backgroundColor: 'white',
       padding: '15px',
       borderRadius: '8px',
       boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-      width: isMinimized ? '200px' : '300px',
-      transition: 'all 0.3s ease',
-      zIndex: 1000,
-      border: '1px solid #ddd'
+      maxWidth: '300px',
+      maxHeight: '80vh',
+      overflowY: 'auto',
+      zIndex: 1000
     }}>
       <div style={{ 
         display: 'flex', 
         justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: '10px',
+        alignItems: 'center',
+        marginBottom: '15px',
         borderBottom: '1px solid #eee',
         paddingBottom: '8px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            backgroundColor: isPaused ? '#ff9800' : '#f44336',
-            animation: isPaused ? 'none' : 'pulse 1.5s infinite'
-          }} />
-          <span style={{ fontWeight: 'bold', color: '#333' }}>
-            {isPaused ? 'Recording Paused' : 'Recording Session'}
-          </span>
-        </div>
-        <button 
-          onClick={() => setIsMinimized(!isMinimized)} 
+        <h3 style={{ margin: 0 }}>Gaze Metrics</h3>
+        <button
+          onClick={() => setShowMetrics(false)}
           style={{
             border: 'none',
             background: 'none',
             cursor: 'pointer',
-            padding: '4px 8px',
-            color: '#666',
-            fontSize: '16px',
-            lineHeight: 1
+            fontSize: '18px',
+            color: '#666'
           }}
-        >
-          {isMinimized ? '□' : '−'}
-        </button>
+        >×</button>
       </div>
 
-      <div style={{ 
-        fontSize: isMinimized ? '12px' : '14px',
-        color: '#333'
+      <div style={{ fontSize: '14px' }}>
+        {/* Basic Stats */}
+        <div className="metric-section">
+          <h4 style={{ color: '#2196F3', marginBottom: '8px' }}>Basic Statistics</h4>
+          <div className="metric-row">
+            <span>Sampling Rate:</span>
+            <span>{metrics.samplingRate.toFixed(1)} Hz</span>
+          </div>
+          <div className="metric-row">
+            <span>Data Quality:</span>
+            <span style={{
+              color: metrics.dataQuality > 80 ? '#4caf50' : 
+                     metrics.dataQuality > 60 ? '#ff9800' : '#f44336'
+            }}>
+              {metrics.dataQuality.toFixed(1)}%
+            </span>
+          </div>
+        </div>
+
+        {/* Fixation Metrics */}
+        <div className="metric-section">
+          <h4 style={{ color: '#4CAF50', marginBottom: '8px' }}>Fixations</h4>
+          <div className="metric-row">
+            <span>Count:</span>
+            <span>{metrics.fixationCount}</span>
+          </div>
+          <div className="metric-row">
+            <span>Average Duration:</span>
+            <span>{metrics.averageFixationDuration.toFixed(1)} ms</span>
+          </div>
+          <div className="metric-row">
+            <span>Frequency:</span>
+            <span>{metrics.fixationFrequency.toFixed(2)}/s</span>
+          </div>
+        </div>
+
+        {/* Saccade Metrics */}
+        <div className="metric-section">
+          <h4 style={{ color: '#FF9800', marginBottom: '8px' }}>Saccades</h4>
+          <div className="metric-row">
+            <span>Count:</span>
+            <span>{metrics.saccadeCount}</span>
+          </div>
+          <div className="metric-row">
+            <span>Average Amplitude:</span>
+            <span>{metrics.averageSaccadeAmplitude.toFixed(1)} px</span>
+          </div>
+          <div className="metric-row">
+            <span>Average Velocity:</span>
+            <span>{metrics.averageSaccadeVelocity.toFixed(1)}°/s</span>
+          </div>
+        </div>
+
+        {/* Spatial Metrics */}
+        <div className="metric-section">
+          <h4 style={{ color: '#9C27B0', marginBottom: '8px' }}>Spatial Metrics</h4>
+          <div className="metric-row">
+            <span>Scanpath Length:</span>
+            <span>{metrics.scanpathLength.toFixed(1)} px</span>
+          </div>
+          <div className="metric-row">
+            <span>Coverage Area:</span>
+            <span>{metrics.convexHullArea.toFixed(0)} px²</span>
+          </div>
+        </div>
+
+        {/* Head Stability */}
+        <div className="metric-section">
+          <h4 style={{ color: '#607D8B', marginBottom: '8px' }}>Head Stability</h4>
+          <div className="metric-row">
+            <span>Position (RMS):</span>
+            <span>
+              {metrics.headStability.x.toFixed(1)}, 
+              {metrics.headStability.y.toFixed(1)}, 
+              {metrics.headStability.z.toFixed(1)}
+            </span>
+          </div>
+          <div className="metric-row">
+            <span>Rotation (RMS):</span>
+            <span>
+              {metrics.headStability.yaw.toFixed(1)}°, 
+              {metrics.headStability.pitch.toFixed(1)}°, 
+              {metrics.headStability.roll.toFixed(1)}°
+            </span>
+          </div>
+        </div>
+
+        {/* Pupil Metrics */}
+        <div className="metric-section">
+          <h4 style={{ color: '#795548', marginBottom: '8px' }}>Pupil Metrics</h4>
+          <div className="metric-row">
+            <span>Average Diameter:</span>
+            <span>{metrics.averagePupilDiameter.toFixed(2)} mm</span>
+          </div>
+          <div className="metric-row">
+            <span>Variability:</span>
+            <span>{metrics.pupilDiameterVariability.toFixed(2)} mm</span>
+          </div>
+        </div>
+      </div>
+
+      <style>
+        {`
+          .metric-section {
+            margin-bottom: 15px;
+            padding: 8px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+          }
+          .metric-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+          }
+          .metric-row span:first-child {
+            color: #666;
+          }
+          .metric-row span:last-child {
+            font-weight: bold;
+          }
+        `}
+      </style>
+    </div>
+  ) : null;
+
+  const sessionWindow = (
+    <>
+      <div className={`recording-session ${isMinimized ? 'minimized' : ''}`} style={{
+        position: 'fixed',
+        right: '20px',
+        bottom: '20px',
+        backgroundColor: 'white',
+        padding: '15px',
+        borderRadius: '8px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+        width: isMinimized ? '200px' : '300px',
+        transition: 'all 0.3s ease',
+        zIndex: 1000,
+        border: '1px solid #ddd'
       }}>
         <div style={{ 
           display: 'flex', 
           justifyContent: 'space-between', 
-          marginBottom: '8px',
-          padding: '4px 8px',
-          backgroundColor: '#f8f9fa',
-          borderRadius: '4px'
+          alignItems: 'center',
+          marginBottom: '10px',
+          borderBottom: '1px solid #eee',
+          paddingBottom: '8px'
         }}>
-          <span>Time:</span>
-          <span style={{ fontWeight: 'bold' }}>{elapsed}</span>
-        </div>
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between',
-          marginBottom: '8px',
-          padding: '4px 8px',
-          backgroundColor: '#f8f9fa',
-          borderRadius: '4px'
-        }}>
-          <span>Data Points:</span>
-          <span style={{ fontWeight: 'bold' }}>{dataPoints}</span>
-        </div>
-        {lastGazePoint && (
-          <div style={{ 
-            marginTop: '8px',
-            padding: '8px',
-            backgroundColor: '#f8f9fa',
-            borderRadius: '4px',
-            fontSize: isMinimized ? '11px' : '13px'
-          }}>
-            <div style={{ marginBottom: '4px' }}>
-              <span>Gaze: </span>
-              <span style={{ fontWeight: 'bold' }}>
-                ({lastGazePoint.x?.toFixed(3) || '0.000'}, {lastGazePoint.y?.toFixed(3) || '0.000'})
-              </span>
-            </div>
-            {lastGazePoint.confidence !== undefined && (
-              <div style={{ marginBottom: '4px' }}>
-                <span>Confidence: </span>
-                <span style={{ 
-                  fontWeight: 'bold',
-                  color: (lastGazePoint.confidence || 0) > 0.8 ? '#4caf50' : 
-                         (lastGazePoint.confidence || 0) > 0.5 ? '#ff9800' : '#f44336'
-                }}>
-                  {((lastGazePoint.confidence || 0) * 100).toFixed(1)}%
-                </span>
-              </div>
-            )}
-            {lastGazePoint.pupilD !== undefined && (
-              <div style={{ marginBottom: '4px' }}>
-                <span>Pupil Diameter: </span>
-                <span style={{ fontWeight: 'bold' }}>
-                  {lastGazePoint.pupilD.toFixed(1)}mm
-                </span>
-              </div>
-            )}
-            {(lastGazePoint.HeadX !== undefined || lastGazePoint.HeadY !== undefined || lastGazePoint.HeadZ !== undefined) && (
-              <div style={{ marginBottom: '4px' }}>
-                <span>Head Position: </span>
-                <span style={{ fontWeight: 'bold' }}>
-                  ({lastGazePoint.HeadX?.toFixed(1) || '0.0'}, 
-                   {lastGazePoint.HeadY?.toFixed(1) || '0.0'}, 
-                   {lastGazePoint.HeadZ?.toFixed(1) || '0.0'})
-                </span>
-              </div>
-            )}
-            {(lastGazePoint.HeadYaw !== undefined || lastGazePoint.HeadPitch !== undefined || lastGazePoint.HeadRoll !== undefined) && (
-              <div>
-                <span>Head Rotation: </span>
-                <span style={{ fontWeight: 'bold' }}>
-                  ({lastGazePoint.HeadYaw?.toFixed(1) || '0.0'}°, 
-                   {lastGazePoint.HeadPitch?.toFixed(1) || '0.0'}°, 
-                   {lastGazePoint.HeadRoll?.toFixed(1) || '0.0'}°)
-                </span>
-              </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontWeight: 'bold' }}>Recording Session</span>
+            {isRecording && !isPaused && (
+              <div className="recording-indicator" />
             )}
           </div>
-        )}
-
-        <div style={{ 
-          display: 'flex', 
-          gap: '8px', 
-          marginTop: '12px',
-          flexWrap: 'wrap'
-        }}>
-          <button
-            onClick={isPaused ? onResume : onPause}
-            style={{
-              padding: '6px 12px',
-              backgroundColor: isPaused ? '#4CAF50' : '#ff9800',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px',
-              flex: '1'
-            }}
-          >
-            {isPaused ? 'Resume' : 'Pause'}
-          </button>
-          <button
-            onClick={() => setShowExportOptions(true)}
-            style={{
-              padding: '6px 12px',
-              backgroundColor: '#2196F3',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px',
-              flex: '1'
-            }}
-          >
-            Export
-          </button>
-          {onKillswitch && (
+          <div>
             <button
-              onClick={() => setShowKillswitchConfirm(true)}
+              onClick={() => setIsMinimized(!isMinimized)}
               style={{
-                padding: '6px 12px',
-                backgroundColor: '#f44336',
-                color: 'white',
                 border: 'none',
-                borderRadius: '4px',
+                background: 'none',
                 cursor: 'pointer',
-                fontSize: '12px',
-                flex: '1'
+                padding: '4px'
               }}
             >
-              Killswitch
+              {isMinimized ? '□' : '−'}
             </button>
-          )}
+          </div>
         </div>
+
+        {!isMinimized && (
+          <>
+            <div style={{ marginBottom: '12px' }}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                marginBottom: '8px',
+                padding: '4px 8px',
+                backgroundColor: '#f8f9fa',
+                borderRadius: '4px'
+              }}>
+                <span>Time:</span>
+                <span style={{ fontWeight: 'bold' }}>{elapsed}</span>
+              </div>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                marginBottom: '8px',
+                padding: '4px 8px',
+                backgroundColor: '#f8f9fa',
+                borderRadius: '4px'
+              }}>
+                <span>Data Points:</span>
+                <span style={{ fontWeight: 'bold' }}>{dataPoints}</span>
+              </div>
+              {lastGazePoint && (
+                <div style={{ 
+                  marginTop: '8px',
+                  padding: '8px',
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: '4px',
+                  fontSize: '11px'
+                }}>
+                  <div style={{ marginBottom: '4px' }}>
+                    <span>Gaze: </span>
+                    <span style={{ fontWeight: 'bold' }}>
+                      ({lastGazePoint.x?.toFixed(3) || '0.000'}, {lastGazePoint.y?.toFixed(3) || '0.000'})
+                    </span>
+                  </div>
+                  {lastGazePoint.confidence !== undefined && (
+                    <div style={{ marginBottom: '4px' }}>
+                      <span>Confidence: </span>
+                      <span style={{ 
+                        fontWeight: 'bold',
+                        color: (lastGazePoint.confidence || 0) > 0.8 ? '#4caf50' : 
+                               (lastGazePoint.confidence || 0) > 0.5 ? '#ff9800' : '#f44336'
+                      }}>
+                        {((lastGazePoint.confidence || 0) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                  {lastGazePoint.pupilD !== undefined && (
+                    <div style={{ marginBottom: '4px' }}>
+                      <span>Pupil Diameter: </span>
+                      <span style={{ fontWeight: 'bold' }}>
+                        {lastGazePoint.pupilD.toFixed(1)}mm
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div style={{ 
+              display: 'flex', 
+              gap: '8px', 
+              marginTop: '12px',
+              flexWrap: 'wrap'
+            }}>
+              <button
+                onClick={onExport}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: '#2196F3',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  flex: '1'
+                }}
+              >
+                Export Data
+              </button>
+              <button
+                onClick={() => setShowMetrics(!showMetrics)}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: showMetrics ? '#f44336' : '#9C27B0',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  flex: '1'
+                }}
+              >
+                {showMetrics ? 'Hide Metrics' : 'Show Metrics'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {showKillswitchConfirm && (
@@ -665,7 +829,7 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
           }
         `}
       </style>
-    </div>
+    </>
   );
 
   return sessionWindow;
