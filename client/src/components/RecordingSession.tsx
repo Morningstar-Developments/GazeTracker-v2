@@ -281,7 +281,7 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
             <div style={{ marginBottom: '4px' }}>
               <span>Gaze: </span>
               <span style={{ fontWeight: 'bold' }}>
-                ({lastGazePoint.x.toFixed(3)}, {lastGazePoint.y.toFixed(3)})
+                ({lastGazePoint.x?.toFixed(3) || '0.000'}, {lastGazePoint.y?.toFixed(3) || '0.000'})
               </span>
             </div>
             {lastGazePoint.confidence !== undefined && (
@@ -289,10 +289,10 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
                 <span>Confidence: </span>
                 <span style={{ 
                   fontWeight: 'bold',
-                  color: lastGazePoint.confidence > 0.8 ? '#4caf50' : 
-                         lastGazePoint.confidence > 0.5 ? '#ff9800' : '#f44336'
+                  color: (lastGazePoint.confidence || 0) > 0.8 ? '#4caf50' : 
+                         (lastGazePoint.confidence || 0) > 0.5 ? '#ff9800' : '#f44336'
                 }}>
-                  {(lastGazePoint.confidence * 100).toFixed(1)}%
+                  {((lastGazePoint.confidence || 0) * 100).toFixed(1)}%
                 </span>
               </div>
             )}
