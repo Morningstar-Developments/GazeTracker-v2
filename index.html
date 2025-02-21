@@ -84,17 +84,29 @@
         };
 
         function computeBasicStats(data) {
+            const validData = data.filter(d => d.confidence !== undefined);
+            const validPupilData = data.filter(d => d.pupilD !== undefined && d.pupilD !== null && d.pupilD !== '');
+            const validHeadData = data.filter(d => d.HeadX !== undefined && d.HeadY !== undefined && d.HeadZ !== undefined);
+            
             return {
                 "Total Data Points": data.length,
-                "Average Confidence": mean(data.map(d => d.confidence)),
-                "Pupil Diameter Mean": mean(data.map(d => d.pupilD)),
-                "Pupil Diameter Std Dev": standardDeviation(data.map(d => d.pupilD)),
-                "HeadX Mean": mean(data.map(d => d.HeadX)),
-                "HeadY Mean": mean(data.map(d => d.HeadY)),
-                "HeadZ Mean": mean(data.map(d => d.HeadZ)),
-                "HeadYaw Variance": variance(data.map(d => d.HeadYaw)),
-                "HeadPitch Variance": variance(data.map(d => d.HeadPitch)),
-                "HeadRoll Variance": variance(data.map(d => d.HeadRoll))
+                "Valid Data Points": validData.length,
+                "Average Confidence": (mean(validData.map(d => d.confidence)) * 100).toFixed(1) + '%',
+                "Pupil Diameter (mm)": {
+                    "Mean": mean(validPupilData.map(d => d.pupilD)).toFixed(2),
+                    "Min": Math.min(...validPupilData.map(d => d.pupilD)).toFixed(2),
+                    "Max": Math.max(...validPupilData.map(d => d.pupilD)).toFixed(2)
+                },
+                "Head Position": {
+                    "X Mean": mean(validHeadData.map(d => d.HeadX)).toFixed(1),
+                    "Y Mean": mean(validHeadData.map(d => d.HeadY)).toFixed(1),
+                    "Z Mean": mean(validHeadData.map(d => d.HeadZ)).toFixed(1)
+                },
+                "Head Rotation (degrees)": {
+                    "Yaw": mean(validHeadData.map(d => d.HeadYaw)).toFixed(1),
+                    "Pitch": mean(validHeadData.map(d => d.HeadPitch)).toFixed(1),
+                    "Roll": mean(validHeadData.map(d => d.HeadRoll)).toFixed(1)
+                }
             };
         }
 
@@ -122,6 +134,7 @@
         }
 
         function mean(arr) {
+            if (!arr.length) return 0;
             return arr.reduce((a, b) => a + b, 0) / arr.length;
         }
 
@@ -141,10 +154,19 @@
             for (const [key, value] of Object.entries(stats)) {
                 const card = document.createElement('div');
                 card.className = 'stat-card';
-                card.innerHTML = `
-                    <h3>${key}</h3>
-                    <p>${typeof value === 'number' ? value.toFixed(2) : value}</p>
-                `;
+                
+                if (typeof value === 'object') {
+                    let content = `<h3>${key}</h3>`;
+                    for (const [subKey, subValue] of Object.entries(value)) {
+                        content += `<p><strong>${subKey}:</strong> ${subValue}</p>`;
+                    }
+                    card.innerHTML = content;
+                } else {
+                    card.innerHTML = `
+                        <h3>${key}</h3>
+                        <p>${value}</p>
+                    `;
+                }
                 container.appendChild(card);
             }
         }
@@ -153,19 +175,64 @@
             const ctx = document.getElementById('eyeMovementChart').getContext('2d');
             if (charts.eyeMovement) charts.eyeMovement.destroy();
             
+            // Filter valid gaze points
+            const validData = data.filter(d => 
+                d.x !== undefined && d.y !== undefined && 
+                d.x !== null && d.y !== null &&
+                d.x !== '' && d.y !== ''
+            );
+
+            // Create color gradient based on timestamp
+            const startTime = new Date(validData[0].timestamp).getTime();
+            const endTime = new Date(validData[validData.length - 1].timestamp).getTime();
+            
+            const points = validData.map(d => ({
+                x: d.x,
+                y: d.y,
+                timestamp: new Date(d.timestamp).getTime()
+            }));
+
             charts.eyeMovement = new Chart(ctx, {
                 type: 'scatter',
                 data: {
                     datasets: [{
-                        label: 'Eye Position',
-                        data: data.map(d => ({x: d.x, y: d.y})),
-                        backgroundColor: 'rgba(54, 162, 235, 0.5)'
+                        label: 'Gaze Path',
+                        data: points,
+                        backgroundColor: points.map(p => {
+                            const progress = (p.timestamp - startTime) / (endTime - startTime);
+                            return `hsl(${200 + progress * 160}, 70%, 50%)`;
+                        }),
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
                     }]
                 },
                 options: {
                     scales: {
                         y: {
-                            reverse: true
+                            reverse: true,
+                            title: {
+                                display: true,
+                                text: 'Y Position (pixels)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'X Position (pixels)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const point = context.raw;
+                                    return [
+                                        `Position: (${point.x.toFixed(1)}, ${point.y.toFixed(1)})`,
+                                        `Time: ${new Date(point.timestamp).toLocaleTimeString()}`
+                                    ];
+                                }
+                            }
                         }
                     }
                 }
@@ -176,35 +243,127 @@
             const ctx = document.getElementById('pupilDilationChart').getContext('2d');
             if (charts.pupilDilation) charts.pupilDilation.destroy();
             
+            // Filter valid pupil data
+            const validData = data.filter(d => 
+                d.pupilD !== undefined && 
+                d.pupilD !== null && 
+                d.pupilD !== '' &&
+                d.timestamp
+            );
+
+            const timestamps = validData.map(d => new Date(d.timestamp));
+            
             charts.pupilDilation = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: data.map((_, i) => i),
+                    labels: timestamps,
                     datasets: [{
-                        label: 'Pupil Diameter',
-                        data: data.map(d => d.pupilD),
+                        label: 'Pupil Diameter (mm)',
+                        data: validData.map(d => ({
+                            x: new Date(d.timestamp),
+                            y: d.pupilD
+                        })),
                         borderColor: 'rgba(75, 192, 192, 1)',
-                        tension: 0.1
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        fill: true,
+                        tension: 0.4
                     }]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'second',
+                                displayFormats: {
+                                    second: 'HH:mm:ss'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Pupil Diameter (mm)'
+                            }
+                        }
+                    }
                 }
             });
         }
 
         function createHeadMovementChart(data) {
-            const displacements = computeHeadMovement(data);
             const ctx = document.getElementById('headMovementChart').getContext('2d');
             if (charts.headMovement) charts.headMovement.destroy();
+            
+            // Filter valid head tracking data
+            const validData = data.filter(d => 
+                d.HeadX !== undefined && d.HeadY !== undefined && d.HeadZ !== undefined &&
+                d.HeadX !== null && d.HeadY !== null && d.HeadZ !== null &&
+                d.HeadX !== '' && d.HeadY !== '' && d.HeadZ !== ''
+            );
+
+            const timestamps = validData.map(d => new Date(d.timestamp));
             
             charts.headMovement = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: data.map((_, i) => i),
-                    datasets: [{
-                        label: 'Head Displacement',
-                        data: displacements,
-                        borderColor: 'rgba(153, 102, 255, 1)',
-                        tension: 0.1
-                    }]
+                    labels: timestamps,
+                    datasets: [
+                        {
+                            label: 'Head X',
+                            data: validData.map(d => ({
+                                x: new Date(d.timestamp),
+                                y: d.HeadX
+                            })),
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Head Y',
+                            data: validData.map(d => ({
+                                x: new Date(d.timestamp),
+                                y: d.HeadY
+                            })),
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Head Z',
+                            data: validData.map(d => ({
+                                x: new Date(d.timestamp),
+                                y: d.HeadZ
+                            })),
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'second',
+                                displayFormats: {
+                                    second: 'HH:mm:ss'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Head Position'
+                            }
+                        }
+                    }
                 }
             });
         }
@@ -217,16 +376,23 @@
                 Papa.parse(file, {
                     header: true,
                     dynamicTyping: true,
+                    skipEmptyLines: true,
                     complete: function(results) {
+                        if (results.errors.length > 0) {
+                            console.error('CSV parsing errors:', results.errors);
+                            alert('Error parsing CSV file. Please check the console for details.');
+                            return;
+                        }
+
                         const data = results.data.filter(row => 
-                            row.timestamp && row.x && row.y && row.pupilD &&
-                            row.HeadX && row.HeadY && row.HeadZ
+                            row.timestamp && // Ensure timestamp exists
+                            !isNaN(row.timestamp) // Ensure it's a valid number
                         );
-                        
-                        // Convert timestamp from milliseconds
-                        data.forEach(row => {
-                            row.timestamp = new Date(row.timestamp);
-                        });
+
+                        if (data.length === 0) {
+                            alert('No valid data found in the CSV file.');
+                            return;
+                        }
 
                         // Update all visualizations
                         const stats = computeBasicStats(data);
@@ -236,6 +402,8 @@
                         createHeadMovementChart(data);
                     }
                 });
+            } else {
+                alert('Please select a CSV file first.');
             }
         }
     </script>
