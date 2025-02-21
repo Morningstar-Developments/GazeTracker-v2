@@ -237,6 +237,25 @@ const SessionControl: React.FC = () => {
           >
             {isTracking ? 'Stop Recording' : 'Start Recording'}
           </button>
+          {!isTracking && gazeData.length > 0 && (
+            <button
+              onClick={handleExport}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#2196F3',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+            >
+              <span>Export Session Data</span>
+              <span style={{ fontSize: '12px' }}>({gazeData.length} points)</span>
+            </button>
+          )}
           {sessionConfig.isPilot && !isTracking && (
             <button
               onClick={() => {
@@ -290,6 +309,12 @@ const SessionControl: React.FC = () => {
           <div>Participant ID: {sessionConfig.participantId}</div>
           <div>Mode: {sessionConfig.isPilot ? 'Pilot' : 'Live'}</div>
           {calibrationComplete && <div style={{ color: '#4CAF50' }}>✓ Calibration Complete</div>}
+          {gazeData.length > 0 && (
+            <div style={{ color: '#2196F3' }}>
+              Data Points: {gazeData.length} | 
+              Rate: {((gazeData.length / ((Date.now() - (startTime || Date.now())) / 1000)) || 0).toFixed(1)} Hz
+            </div>
+          )}
         </div>
       </div>
 

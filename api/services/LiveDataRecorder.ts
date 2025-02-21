@@ -154,8 +154,14 @@ export class LiveDataRecorder extends EventEmitter {
 
   private formatDataPoint(data: GazeData): string {
     try {
+      // Ensure all required fields are present
+      if (!data.x || !data.y || !data.timestamp) {
+        this.log('Missing required fields in gaze data', 'warn');
+        return '';
+      }
+
       // Format timestamp and time_24h exactly like CSVExporter
-      const timestamp = data.timestamp || Date.now();
+      const timestamp = data.timestamp;
       const time_24h = format(new Date(timestamp), 'yyyy-MM-dd HH:mm:ss');
 
       // Format numeric values with proper precision
@@ -194,14 +200,46 @@ export class LiveDataRecorder extends EventEmitter {
         this.initializeRecording();
       }
 
-      this.stats.totalPoints++;
-      this.buffer.push(data);
+      // Only record valid gaze data (state === 0)
+      if (data.state !== undefined && data.state !== 0) {
+        this.log(`Skipping invalid gaze data point with state: ${data.state}`, 'warn');
+        return;
+      }
 
-      // Update stats with safe timestamp handling
-      const timestamp = data.timestamp || Date.now();
-      this.stats.lastTimestamp = timestamp;
-      this.stats.lastWriteTime = Date.now();
-      this.stats.dataRate = this.stats.totalPoints / ((Date.now() - this.stats.startTime) / 1000);
+      this.stats.totalPoints++;
+
+      // Format data point immediately
+      const formattedData = this.formatDataPoint(data);
+      if (!formattedData) {
+        this.stats.errorCount++;
+        return;
+      }
+
+      // Write immediately to both streams with error handling
+      try {
+        if (this.csvStream?.writable && this.backupStream?.writable) {
+          this.csvStream.write(formattedData);
+          this.backupStream.write(formattedData);
+          
+          this.stats.validPoints++;
+          this.stats.lastTimestamp = data.timestamp;
+          this.stats.lastWriteTime = Date.now();
+          this.stats.dataRate = this.stats.validPoints / ((Date.now() - this.stats.startTime) / 1000);
+
+          // Emit data written event
+          this.emit('data_written', {
+            points: 1,
+            total: this.stats.validPoints,
+            timestamp: format(new Date(), 'HH:mm:ss.SSS')
+          });
+        } else {
+          throw new Error('Write streams are not writable');
+        }
+      } catch (writeError) {
+        this.handleError('Failed to write data point', writeError);
+        // Try to reinitialize streams
+        this.initializeRecording();
+      }
 
       // Emit data received event
       this.emit('data_received', {
@@ -214,10 +252,6 @@ export class LiveDataRecorder extends EventEmitter {
         total: this.stats.totalPoints
       });
 
-      // Flush buffer when it reaches the size limit or immediately if first point
-      if (this.buffer.length >= this.bufferSize || this.stats.totalPoints === 1) {
-        this.flushBuffer();
-      }
     } catch (error) {
       this.handleError('Error recording data point', error);
     }

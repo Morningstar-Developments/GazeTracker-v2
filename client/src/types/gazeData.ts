@@ -12,4 +12,5 @@ export interface GazeData {
   HeadYaw?: number;
   HeadPitch?: number;
   HeadRoll?: number;
+  state?: number; // 0: valid gaze data; -1: face tracking lost; 1: gaze data uncalibrated
 }
