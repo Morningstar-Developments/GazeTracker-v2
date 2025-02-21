@@ -153,24 +153,28 @@ class CSVExporter:
             return None
 
     def _flush_buffer(self, writer: csv.writer) -> None:
-        """Flush the data buffer to disk"""
+        """Flush the data buffer to disk with exact template format"""
         try:
             for validated_data in self.data_buffer:
+                # Format timestamp and time_24h
+                timestamp = validated_data["timestamp"]
+                time_24h = datetime.fromtimestamp(timestamp / 1000).strftime("%Y-%m-%d %H:%M:%S")
+                
                 writer.writerow([
-                    validated_data["timestamp"],
-                    validated_data["time_24h"],
-                    round(validated_data["x"], 3) if validated_data["x"] is not None else "",
-                    round(validated_data["y"], 3) if validated_data["y"] is not None else "",
-                    round(validated_data["confidence"], 2) if validated_data["confidence"] is not None else "",
-                    round(validated_data["pupilD"], 1) if validated_data["pupilD"] is not None else "",
-                    round(validated_data["docX"], 3) if validated_data["docX"] is not None else "",
-                    round(validated_data["docY"], 3) if validated_data["docY"] is not None else "",
-                    round(validated_data["HeadX"], 1) if validated_data["HeadX"] is not None else "",
-                    round(validated_data["HeadY"], 1) if validated_data["HeadY"] is not None else "",
-                    round(validated_data["HeadZ"], 1) if validated_data["HeadZ"] is not None else "",
-                    round(validated_data["HeadYaw"], 1) if validated_data["HeadYaw"] is not None else "",
-                    round(validated_data["HeadPitch"], 1) if validated_data["HeadPitch"] is not None else "",
-                    round(validated_data["HeadRoll"], 1) if validated_data["HeadRoll"] is not None else ""
+                    timestamp,                                                         # timestamp
+                    time_24h,                                                         # time_24h
+                    round(validated_data["x"], 3) if validated_data["x"] is not None else "",  # x
+                    round(validated_data["y"], 3) if validated_data["y"] is not None else "",  # y
+                    round(validated_data["confidence"], 2) if validated_data["confidence"] is not None else "",  # confidence
+                    round(validated_data["pupilD"], 1) if validated_data["pupilD"] is not None else "",  # pupilD
+                    round(validated_data["docX"], 3) if validated_data["docX"] is not None else "",  # docX
+                    round(validated_data["docY"], 3) if validated_data["docY"] is not None else "",  # docY
+                    round(validated_data["HeadX"], 1) if validated_data["HeadX"] is not None else "",  # HeadX
+                    round(validated_data["HeadY"], 1) if validated_data["HeadY"] is not None else "",  # HeadY
+                    round(validated_data["HeadZ"], 1) if validated_data["HeadZ"] is not None else "",  # HeadZ
+                    round(validated_data["HeadYaw"], 1) if validated_data["HeadYaw"] is not None else "",  # HeadYaw
+                    round(validated_data["HeadPitch"], 1) if validated_data["HeadPitch"] is not None else "",  # HeadPitch
+                    round(validated_data["HeadRoll"], 1) if validated_data["HeadRoll"] is not None else ""   # HeadRoll
                 ])
             self.data_buffer = []
         except Exception as e:
@@ -185,7 +189,7 @@ class CSVExporter:
             output = io.StringIO()
             writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
 
-            # Write header
+            # Write header exactly matching template format
             writer.writerow([
                 'timestamp', 'time_24h', 'x', 'y', 'confidence', 'pupilD', 
                 'docX', 'docY', 'HeadX', 'HeadY', 'HeadZ',
