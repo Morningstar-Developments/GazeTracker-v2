@@ -61,17 +61,28 @@ export const exportToCSV = async (data: SessionData) => {
   const filename = getFormattedFilename(data, '.csv');
   const path = getDataPath(data);
   
+  // Create CSV data matching template format
   const csvData = Papa.unparse({
-    fields: ['timestamp', 'x', 'y', 'leftEye', 'rightEye', 'confidence', 'participantId', 'sessionType'],
+    fields: [
+      'timestamp', 'time_24h', 'x', 'y', 'confidence', 'pupilD',
+      'docX', 'docY', 'HeadX', 'HeadY', 'HeadZ',
+      'HeadYaw', 'HeadPitch', 'HeadRoll'
+    ],
     data: data.gazeData.map(point => ({
       timestamp: point.timestamp,
-      x: point.x,
-      y: point.y,
-      leftEye: JSON.stringify(point.leftEye),
-      rightEye: JSON.stringify(point.rightEye),
-      confidence: point.confidence,
-      participantId: data.participantId,
-      sessionType: data.sessionType
+      time_24h: format(new Date(point.timestamp), 'yyyy-MM-dd HH:mm:ss'),
+      x: point.x?.toFixed(3),
+      y: point.y?.toFixed(3),
+      confidence: point.confidence?.toFixed(2),
+      pupilD: point.pupilD?.toFixed(1),
+      docX: point.x?.toFixed(3),  // Using x as docX
+      docY: point.y?.toFixed(3),  // Using y as docY
+      HeadX: point.HeadX?.toFixed(1),
+      HeadY: point.HeadY?.toFixed(1),
+      HeadZ: point.HeadZ?.toFixed(1),
+      HeadYaw: point.HeadYaw?.toFixed(1),
+      HeadPitch: point.HeadPitch?.toFixed(1),
+      HeadRoll: point.HeadRoll?.toFixed(1)
     }))
   });
 
