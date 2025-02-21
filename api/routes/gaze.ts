@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { DataStorageService, SessionConfig } from '../services/dataStorage';
+import { LiveDataRecorder } from '../services/LiveDataRecorder';
 import { GazeData } from '../types/gazeData';
 import { PythonShell } from 'python-shell';
 import { format } from 'date-fns';
@@ -7,6 +8,7 @@ import path from 'path';
 
 const router = Router();
 const dataStorage = new DataStorageService();
+let liveRecorder: LiveDataRecorder | null = null;
 
 // Initialize a new session
 router.post('/sessions', (req: Request, res: Response) => {
@@ -16,6 +18,12 @@ router.post('/sessions', (req: Request, res: Response) => {
   };
   
   dataStorage.initializeSession(config);
+  
+  // Initialize live recorder for non-pilot sessions
+  if (!config.isPilot) {
+    liveRecorder = new LiveDataRecorder(config.participantId);
+  }
+  
   res.status(201).json({ message: 'Session initialized' });
 });
 
@@ -43,21 +51,40 @@ router.post('/sessions/current/gaze', (req: Request, res: Response) => {
   };
   
   dataStorage.addGazeData(gazeData);
+  
+  // Record data point in CSV if live recording is active
+  if (liveRecorder) {
+    liveRecorder.recordDataPoint(gazeData);
+  }
+  
   res.status(201).json(gazeData);
 });
 
-// Save current session to CSV
-router.post('/sessions/current/save', (req: Request, res: Response) => {
+// End session and get CSV file path
+router.post('/sessions/current/end', (req: Request, res: Response) => {
   try {
-    const filename = dataStorage.saveSession();
-    res.json({ filename });
+    let csvPath = '';
+    if (liveRecorder) {
+      csvPath = liveRecorder.endRecording();
+      liveRecorder = null;
+    }
+    
+    dataStorage.clearSession();
+    res.json({ 
+      message: 'Session ended',
+      csvPath: csvPath 
+    });
   } catch (error) {
-    res.status(400).json({ error: (error as Error).message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
 // Clear current session
 router.delete('/sessions/current', (req: Request, res: Response) => {
+  if (liveRecorder) {
+    liveRecorder.endRecording();
+    liveRecorder = null;
+  }
   dataStorage.clearSession();
   res.status(204).send();
 });

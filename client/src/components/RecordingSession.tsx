@@ -75,73 +75,25 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
     }
   }, [gazeData]);
 
-  const handleExport = (format: string) => {
-    const endTime = Date.now();
-    const sessionData = {
-      participantId,
-      sessionType: isPilot ? 'pilot' : 'live',
-      startTime: startTime ? new Date(startTime).toISOString() : null,
-      endTime: new Date(endTime).toISOString(),
-      duration: startTime ? endTime - startTime : 0,
-      totalDataPoints: gazeData.length,
-      gazeData: isPilot ? [] : gazeData.map(point => {
-        const timestamp = typeof point.timestamp === 'number' ? point.timestamp : Date.now();
-        const date = new Date(timestamp);
-        
-        return {
-          ...point,
-          timestamp,
-          time_24h: date.toISOString().slice(0, 19).replace('T', ' ')
-        };
-      })
-    };
-
+  const handleExport = async () => {
     try {
-      switch (format) {
-        case 'json':
-          exportToJSON(sessionData);
-          break;
-        case 'csv':
-          if (isPilot) {
-            fetch('/api/pilot/generate-test-data', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                participantId,
-                duration: 5
-              })
-            })
-            .then(response => response.blob())
-            .then(blob => {
-              const filename = `P${participantId.padStart(3, '0')}_pilot_${formatDate(new Date(), 'yyyyMMdd_HHmmss')}.csv`;
-              const link = document.createElement('a');
-              link.href = window.URL.createObjectURL(blob);
-              link.download = filename;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              window.URL.revokeObjectURL(link.href);
-            })
-            .catch(error => {
-              console.error('Failed to generate test data:', error);
-              alert('Failed to generate test data. Please try again.');
-            });
-          } else {
-            exportToCSV(sessionData);
-          }
-          break;
-        case 'xlsx':
-          exportToXLSX(sessionData);
-          break;
-        case 'docx':
-          exportToDocx(sessionData);
-          break;
-        case 'md':
-          exportToMarkdown(sessionData);
-          break;
+      // End the session and get CSV path
+      const response = await fetch('/api/sessions/current/end', {
+        method: 'POST'
+      });
+      const result = await response.json();
+      
+      if (result.csvPath) {
+        // Download the CSV file
+        const filename = result.csvPath.split('/').pop();
+        const link = document.createElement('a');
+        link.href = `/recordings/${filename}`;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       }
+
       setShowExportOptions(false);
       onExport();
     } catch (error) {
@@ -203,46 +155,14 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
           <div style={{ marginTop: '20px' }}>
             <h4>Select Export Format:</h4>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button onClick={() => handleExport('json')} style={{
+              <button onClick={() => handleExport()} style={{
                 padding: '8px 16px',
                 backgroundColor: '#9e9e9e',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}>JSON</button>
-              <button onClick={() => handleExport('csv')} style={{
-                padding: '8px 16px',
-                backgroundColor: '#4CAF50',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: 'pointer'
               }}>CSV</button>
-              <button onClick={() => handleExport('xlsx')} style={{
-                padding: '8px 16px',
-                backgroundColor: '#9e9e9e',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}>Excel</button>
-              <button onClick={() => handleExport('docx')} style={{
-                padding: '8px 16px',
-                backgroundColor: '#9e9e9e',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}>Word</button>
-              <button onClick={() => handleExport('md')} style={{
-                padding: '8px 16px',
-                backgroundColor: '#9e9e9e',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}>Markdown</button>
             </div>
           </div>
         )}
