@@ -22,6 +22,36 @@ router.post('/sessions', (req: Request, res: Response) => {
   // Initialize live recorder for non-pilot sessions
   if (!config.isPilot) {
     liveRecorder = new LiveDataRecorder(config.participantId);
+    
+    // Set up event listeners
+    liveRecorder.on('recording_started', (data) => {
+      console.log(`[${data.timestamp}] Recording started: ${data.path}`);
+    });
+
+    liveRecorder.on('data_received', (data) => {
+      console.log(`[${data.timestamp}] Data point received: (${data.point.x}, ${data.point.y}) conf: ${data.point.confidence} (Total: ${data.total})`);
+    });
+
+    liveRecorder.on('data_written', (data) => {
+      console.log(`[${data.timestamp}] Wrote ${data.points} points to CSV (Total: ${data.total})`);
+    });
+
+    liveRecorder.on('health_status', (status) => {
+      console.log(`[${status.timestamp}] Health Status:
+        Points: ${status.totalPoints} (${status.validPoints} valid)
+        Rate: ${status.dataRate} Hz
+        Quality: ${status.dataQuality}%
+        Buffer: ${status.bufferSize} points
+        Last Write: ${status.timeSinceLastWrite}s ago`);
+    });
+
+    liveRecorder.on('warning', (warning) => {
+      console.warn(`[${warning.timestamp}] Warning: ${warning.message}`);
+    });
+
+    liveRecorder.on('error', (error) => {
+      console.error(`Recording error: ${error.message}`);
+    });
   }
   
   res.status(201).json({ message: 'Session initialized' });
@@ -64,28 +94,54 @@ router.post('/sessions/current/gaze', (req: Request, res: Response) => {
 router.post('/sessions/current/end', (req: Request, res: Response) => {
   try {
     let csvPath = '';
+    let sessionFiles = null;
+    let sessionData = null;
+    
     if (liveRecorder) {
       // End recording and get the CSV path
       csvPath = liveRecorder.endRecording();
       liveRecorder = null;
 
-      // Get the current session data
-      const sessionData = dataStorage.getCurrentSession();
+      // Get the current session data and save it
+      sessionData = dataStorage.getCurrentSession();
+      sessionFiles = dataStorage.saveSession();
       
       // Clear the session
       dataStorage.clearSession();
 
       // Return both the CSV path and the session data
       res.json({ 
-        message: 'Session ended',
-        csvPath: csvPath,
-        sessionData: sessionData
+        message: 'Session ended successfully',
+        files: {
+          raw: path.basename(csvPath),
+          processed: sessionFiles?.processedFile,
+          analytics: sessionFiles?.analyticsFile
+        },
+        sessionData: sessionData.gazeData
       });
     } else {
-      res.status(400).json({ error: 'No active recording session found' });
+      // For pilot sessions, just save the data
+      sessionData = dataStorage.getCurrentSession();
+      if (sessionData.config) {
+        sessionFiles = dataStorage.saveSession();
+        dataStorage.clearSession();
+        
+        res.json({
+          message: 'Pilot session ended successfully',
+          sessionData: sessionData.gazeData,
+          files: {
+            raw: sessionFiles.rawFile,
+            processed: sessionFiles.processedFile,
+            analytics: sessionFiles.analyticsFile
+          }
+        });
+      } else {
+        res.status(400).json({ error: 'No active session found' });
+      }
     }
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Error ending session:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error occurred' });
   }
 });
 

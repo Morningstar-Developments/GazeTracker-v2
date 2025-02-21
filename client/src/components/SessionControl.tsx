@@ -76,6 +76,11 @@ const SessionControl: React.FC = () => {
             ...prevLog,
             `[${enhancedData.formattedTime}] Collected ${newData.length} data points`
           ].slice(-100));
+        } else if (!sessionConfig.isPilot && newData.length % 100 === 0) {
+          setDebugLog(prevLog => [
+            ...prevLog,
+            `[${enhancedData.formattedTime}] Recorded ${newData.length} data points to CSV file`
+          ].slice(-100));
         }
         
         return newData;
@@ -123,12 +128,28 @@ const SessionControl: React.FC = () => {
       setLastLoggedCount(0);
       setStartTime(Date.now());
       setIsPaused(false);
+
+      // Add initialization log
+      if (!sessionConfig.isPilot) {
+        setDebugLog(prev => [
+          ...prev,
+          `[${format(new Date(), 'HH:mm:ss.SSS')}] Initializing live recording session...`,
+          `[${format(new Date(), 'HH:mm:ss.SSS')}] Starting eye tracking calibration...`
+        ]);
+      }
+
       startTracking(
         handleGazeData,
         () => {
           setCalibrationComplete(true);
           if (sessionConfig.isPilot) {
             setDebugLog(prev => [...prev, `[${format(new Date(), 'HH:mm:ss.SSS')}] Calibration complete`]);
+          } else {
+            setDebugLog(prev => [
+              ...prev,
+              `[${format(new Date(), 'HH:mm:ss.SSS')}] Calibration complete - Starting live data recording...`,
+              `[${format(new Date(), 'HH:mm:ss.SSS')}] CSV file created and ready for data collection`
+            ]);
           }
         }
       );

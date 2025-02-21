@@ -84,27 +84,54 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
       const response = await fetch('/api/sessions/current/end', {
         method: 'POST'
       });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to end session: ${response.statusText}`);
+      }
+
       const result = await response.json();
       
       if (result.error) {
         throw new Error(result.error);
       }
 
-      if (result.sessionData && result.csvPath) {
-        // Download the CSV file using the returned path
-        const csvResponse = await fetch(`/recordings/${result.csvPath.split('/').pop()}`);
-        const csvBlob = await csvResponse.blob();
-        const filename = result.csvPath.split('/').pop() || `gaze_data_${Date.now()}.csv`;
-        saveAs(csvBlob, filename);
-
-        setShowExportOptions(false);
-        onExport();
-      } else {
-        throw new Error('No session data or CSV path received from server');
+      if (!result.files || !result.sessionData) {
+        throw new Error('No session data or files received from server');
       }
+
+      // Create session data object
+      const sessionData = {
+        participantId,
+        sessionType: isPilot ? 'pilot' : 'live',
+        startTime: startTime ? new Date(startTime).toISOString() : null,
+        endTime: new Date().toISOString(),
+        duration: startTime ? Date.now() - startTime : 0,
+        totalDataPoints: result.sessionData.length,
+        gazeData: result.sessionData
+      };
+
+      // Export based on selected format
+      if (showExportOptions) {
+        setShowExportOptions(false);
+        return;
+      }
+
+      // Default to CSV export
+      await exportToCSV(sessionData);
+      
+      // Download the raw CSV file as well
+      const csvResponse = await fetch(`/recordings/live/P${participantId.padStart(3, '0')}/${result.files.raw}`);
+      if (!csvResponse.ok) {
+        throw new Error('Failed to download CSV file');
+      }
+      
+      const csvBlob = await csvResponse.blob();
+      saveAs(csvBlob, result.files.raw);
+
+      onExport();
     } catch (error) {
       console.error('Export failed:', error);
-      alert('Failed to export data. Please try again.');
+      alert(`Failed to export data: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 

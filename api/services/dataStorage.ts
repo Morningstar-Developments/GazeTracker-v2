@@ -179,7 +179,7 @@ export class DataStorageService {
     return enrichedData;
   }
 
-  saveSession(): { rawFile: string, processedFile: string } {
+  saveSession(): { rawFile: string, processedFile: string, analyticsFile: string } {
     if (!this.currentSession.config) {
       throw new Error('Session not initialized');
     }
@@ -188,19 +188,42 @@ export class DataStorageService {
     const sessionType = this.currentSession.config.isPilot ? 'pilot' : 'live';
     const paddedId = this.currentSession.config.participantId.padStart(3, '0');
     
+    // Create participant directory if it doesn't exist
+    const participantDir = path.join(this.outputDir, sessionType, `P${paddedId}`);
+    if (!fs.existsSync(participantDir)) {
+      fs.mkdirSync(participantDir, { recursive: true });
+    }
+
+    // Create session directory with timestamp
+    const sessionDir = path.join(participantDir, timestamp);
+    if (!fs.existsSync(sessionDir)) {
+      fs.mkdirSync(sessionDir, { recursive: true });
+    }
+    
     // Save raw data
     const rawFilename = `P${paddedId}_${sessionType}_${timestamp}_raw.csv`;
-    const rawFilepath = path.join(this.outputDir, sessionType, 'raw', rawFilename);
+    const rawFilepath = path.join(sessionDir, rawFilename);
     this.saveRawData(rawFilepath);
 
     // Save processed data
     const processedFilename = `P${paddedId}_${sessionType}_${timestamp}_processed.csv`;
-    const processedFilepath = path.join(this.outputDir, sessionType, 'processed', processedFilename);
+    const processedFilepath = path.join(sessionDir, processedFilename);
     this.saveProcessedData(processedFilepath);
+
+    // Save analytics data
+    const analyticsFilename = `P${paddedId}_${sessionType}_${timestamp}_analytics.json`;
+    const analyticsFilepath = path.join(sessionDir, analyticsFilename);
+    this.saveAnalyticsData(analyticsFilepath);
+
+    // Create session summary
+    const summaryFilename = `P${paddedId}_${sessionType}_${timestamp}_summary.md`;
+    const summaryFilepath = path.join(sessionDir, summaryFilename);
+    this.saveSessionSummary(summaryFilepath);
 
     return {
       rawFile: rawFilename,
-      processedFile: processedFilename
+      processedFile: processedFilename,
+      analyticsFile: analyticsFilename
     };
   }
 
@@ -276,5 +299,71 @@ export class DataStorageService {
     ].join(','));
 
     fs.writeFileSync(filepath, [headers, ...rows].join('\n'));
+  }
+
+  private saveAnalyticsData(filepath: string) {
+    const sessionDuration = Date.now() - this.sessionStartTime;
+    const analyticsData = {
+      participantId: this.currentSession.config?.participantId,
+      sessionType: this.currentSession.config?.isPilot ? 'pilot' : 'live',
+      startTime: format(this.sessionStartTime, 'yyyy-MM-dd HH:mm:ss'),
+      endTime: format(Date.now(), 'yyyy-MM-dd HH:mm:ss'),
+      duration: sessionDuration,
+      totalDataPoints: this.currentSession.gazeData.length,
+      validDataPoints: this.currentSession.gazeData.filter(d => d.confidence && d.confidence > 0.5).length,
+      metrics: {
+        fixations: {
+          count: this.fixationCount,
+          totalDuration: this.totalFixationDuration,
+          avgDuration: this.fixationCount > 0 ? this.totalFixationDuration / this.fixationCount : 0
+        },
+        saccades: {
+          count: this.saccadeCount,
+          totalLength: this.totalSaccadeLength,
+          avgLength: this.saccadeCount > 0 ? this.totalSaccadeLength / this.saccadeCount : 0
+        },
+        blinks: {
+          count: this.blinkCount,
+          rate: (this.blinkCount / sessionDuration) * 60000 // blinks per minute
+        }
+      }
+    };
+
+    fs.writeFileSync(filepath, JSON.stringify(analyticsData, null, 2));
+  }
+
+  private saveSessionSummary(filepath: string) {
+    const sessionDuration = Date.now() - this.sessionStartTime;
+    const validDataPoints = this.currentSession.gazeData.filter(d => d.confidence && d.confidence > 0.5).length;
+    const dataQuality = (validDataPoints / this.currentSession.gazeData.length) * 100;
+
+    const summary = `# Gaze Tracking Session Summary
+
+## Session Information
+- Participant ID: ${this.currentSession.config?.participantId}
+- Session Type: ${this.currentSession.config?.isPilot ? 'Pilot' : 'Live'}
+- Start Time: ${format(this.sessionStartTime, 'yyyy-MM-dd HH:mm:ss')}
+- End Time: ${format(Date.now(), 'yyyy-MM-dd HH:mm:ss')}
+- Duration: ${format(sessionDuration, 'mm:ss')}
+
+## Data Quality
+- Total Data Points: ${this.currentSession.gazeData.length}
+- Valid Data Points: ${validDataPoints}
+- Data Quality: ${dataQuality.toFixed(1)}%
+
+## Eye Movement Metrics
+- Fixations: ${this.fixationCount}
+- Average Fixation Duration: ${this.fixationCount > 0 ? (this.totalFixationDuration / this.fixationCount).toFixed(2) : 0}ms
+- Saccades: ${this.saccadeCount}
+- Average Saccade Length: ${this.saccadeCount > 0 ? (this.totalSaccadeLength / this.saccadeCount).toFixed(2) : 0}
+- Blink Rate: ${((this.blinkCount / sessionDuration) * 60000).toFixed(1)} blinks/min
+
+## Files Generated
+- Raw Data: ${path.basename(filepath).replace('_summary.md', '_raw.csv')}
+- Processed Data: ${path.basename(filepath).replace('_summary.md', '_processed.csv')}
+- Analytics Data: ${path.basename(filepath).replace('_summary.md', '_analytics.json')}
+`;
+
+    fs.writeFileSync(filepath, summary);
   }
 } 

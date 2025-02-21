@@ -23,9 +23,9 @@ export class LiveDataRecorder extends EventEmitter {
   private participantId: string;
   private startTime: number;
   private buffer: GazeData[] = [];
-  private bufferSize = 1000; // Match CSVExporter buffer size
+  private bufferSize = 100; // Reduced buffer size for more frequent writes
   private healthCheckInterval: NodeJS.Timeout | null = null;
-  private readonly HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
+  private readonly HEALTH_CHECK_INTERVAL = 10000; // 10 seconds
   private stats: RecordingStats = {
     startTime: Date.now(),
     totalPoints: 0,
@@ -39,7 +39,7 @@ export class LiveDataRecorder extends EventEmitter {
   constructor(participantId: string) {
     super();
     this.participantId = participantId;
-    this.outputDir = path.join(process.cwd(), 'recordings');
+    this.outputDir = path.join(process.cwd(), 'public', 'recordings');
     this.csvStream = null;
     this.backupStream = null;
     this.startTime = Date.now();
@@ -48,14 +48,27 @@ export class LiveDataRecorder extends EventEmitter {
 
   private initializeRecording() {
     try {
-      // Ensure directories exist
-      if (!fs.existsSync(this.outputDir)) {
-        fs.mkdirSync(this.outputDir, { recursive: true });
-      }
+      // Ensure base directories exist
+      this.outputDir = path.join(process.cwd(), 'public', 'recordings');
+      const liveDir = path.join(this.outputDir, 'live');
+      const participantDir = path.join(liveDir, `P${this.participantId.padStart(3, '0')}`);
+      
+      [this.outputDir, liveDir, participantDir].forEach(dir => {
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+      });
 
       const timestamp = format(Date.now(), 'yyyyMMdd_HHmmss');
-      this.recordingPath = path.join(this.outputDir, `P${this.participantId.padStart(3, '0')}_live_${timestamp}.csv`);
-      this.backupPath = path.join(this.outputDir, `P${this.participantId.padStart(3, '0')}_live_${timestamp}_backup.csv`);
+      const sessionDir = path.join(participantDir, timestamp);
+      if (!fs.existsSync(sessionDir)) {
+        fs.mkdirSync(sessionDir);
+      }
+
+      // Set up file paths in the session directory
+      const filename = `P${this.participantId.padStart(3, '0')}_live_${timestamp}.csv`;
+      this.recordingPath = path.join(sessionDir, filename);
+      this.backupPath = path.join(sessionDir, `${filename.replace('.csv', '_backup.csv')}`);
 
       // Write headers exactly matching template format
       const headers = 'timestamp,time_24h,x,y,confidence,pupilD,docX,docY,HeadX,HeadY,HeadZ,HeadYaw,HeadPitch,HeadRoll\n';
@@ -74,18 +87,32 @@ export class LiveDataRecorder extends EventEmitter {
       });
 
       if (this.csvStream) {
-        this.csvStream.on('error', (error) => this.handleError('CSV stream error', error));
+        this.csvStream.on('error', (error) => {
+          this.handleError('CSV stream error', error);
+          this.emit('error', { message: 'CSV stream error', error: error.message });
+        });
+        this.csvStream.on('open', () => {
+          this.emit('recording_started', {
+            path: this.recordingPath,
+            timestamp: format(new Date(), 'HH:mm:ss.SSS')
+          });
+        });
       }
       if (this.backupStream) {
-        this.backupStream.on('error', (error) => this.handleError('Backup stream error', error));
+        this.backupStream.on('error', (error) => {
+          this.handleError('Backup stream error', error);
+          this.emit('error', { message: 'Backup stream error', error: error.message });
+        });
       }
 
       // Start monitoring
       this.startMonitoring();
       
-      this.log('Recording session initialized successfully');
+      this.log(`Recording session initialized successfully in ${sessionDir}`);
+      return this.recordingPath;
     } catch (error) {
       this.handleError('Initialization failed', error);
+      throw error;
     }
   }
 
@@ -172,6 +199,17 @@ export class LiveDataRecorder extends EventEmitter {
       this.stats.lastWriteTime = Date.now();
       this.stats.dataRate = this.stats.totalPoints / ((Date.now() - this.stats.startTime) / 1000);
 
+      // Emit data received event
+      this.emit('data_received', {
+        timestamp: format(new Date(), 'HH:mm:ss.SSS'),
+        point: {
+          x: data.x.toFixed(3),
+          y: data.y.toFixed(3),
+          confidence: (data.confidence || 0).toFixed(2)
+        },
+        total: this.stats.totalPoints
+      });
+
       // Flush buffer when it reaches the size limit
       if (this.buffer.length >= this.bufferSize) {
         this.flushBuffer();
@@ -203,6 +241,13 @@ export class LiveDataRecorder extends EventEmitter {
         
         const validPoints = this.buffer.length;
         this.stats.validPoints += validPoints;
+        
+        // Emit data written event
+        this.emit('data_written', {
+          points: validPoints,
+          total: this.stats.validPoints,
+          timestamp: format(new Date(), 'HH:mm:ss.SSS')
+        });
         
         // Log progress
         this.log(`Wrote ${validPoints} points to file. Total: ${this.stats.validPoints}`);
@@ -266,21 +311,35 @@ export class LiveDataRecorder extends EventEmitter {
     
     this.stats.dataRate = this.stats.totalPoints / duration;
 
+    const healthStatus = {
+      timestamp: format(new Date(), 'HH:mm:ss.SSS'),
+      totalPoints: this.stats.totalPoints,
+      validPoints: this.stats.validPoints,
+      dataRate: this.stats.dataRate.toFixed(1),
+      dataQuality: ((this.stats.validPoints / this.stats.totalPoints) * 100).toFixed(1),
+      timeSinceLastWrite: (timeSinceLastWrite / 1000).toFixed(1),
+      bufferSize: this.buffer.length
+    };
+
     if (timeSinceLastWrite > this.HEALTH_CHECK_INTERVAL) {
       this.emit('warning', {
         type: 'data_gap',
         message: `No data received for ${(timeSinceLastWrite / 1000).toFixed(1)}s`,
-        timestamp: now
+        timestamp: format(new Date(), 'HH:mm:ss.SSS')
       });
     }
 
+    // Emit health status event
+    this.emit('health_status', healthStatus);
+
     // Log health status
     this.log(`Health Check:
-      Total Points: ${this.stats.totalPoints}
-      Valid Points: ${this.stats.validPoints}
-      Data Rate: ${this.stats.dataRate.toFixed(1)} Hz
-      Data Quality: ${((this.stats.validPoints / this.stats.totalPoints) * 100).toFixed(1)}%
-      Last Write: ${this.stats.lastWriteTime ? new Date(this.stats.lastWriteTime).toISOString() : 'Never'}
+      Total Points: ${healthStatus.totalPoints}
+      Valid Points: ${healthStatus.validPoints}
+      Data Rate: ${healthStatus.dataRate} Hz
+      Data Quality: ${healthStatus.dataQuality}%
+      Buffer Size: ${healthStatus.bufferSize}
+      Time Since Last Write: ${healthStatus.timeSinceLastWrite}s
     `);
   }
 
@@ -295,7 +354,14 @@ export class LiveDataRecorder extends EventEmitter {
     const timestamp = format(new Date(), 'HH:mm:ss.SSS');
     const formattedMessage = `[${timestamp}] ${message}`;
     
+    // Log to console
     console[level](formattedMessage);
+    
+    // Log to file
+    const logPath = path.join(this.outputDir, 'gaze_tracker.log');
+    fs.appendFileSync(logPath, `${formattedMessage}\n`);
+    
+    // Emit log event
     this.emit('log', { level, message: formattedMessage });
   }
 } 
