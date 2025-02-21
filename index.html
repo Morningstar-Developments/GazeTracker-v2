@@ -1,89 +1,242 @@
 <!DOCTYPE html>
-<html>
-   <head>
-      <meta charset="utf-8">
-      <title>GazeCloudAPI</title>
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eye Tracking Analysis Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        .file-input {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Eye Tracking Analysis Dashboard</h1>
+        
+        <div class="file-input">
+            <input type="file" id="csvFile" accept=".csv">
+            <button onclick="processFile()">Analyze Data</button>
+        </div>
 
+        <div class="stats-container" id="basicStats"></div>
 
+        <div class="chart-container">
+            <h2>Eye Movement Trajectory</h2>
+            <canvas id="eyeMovementChart"></canvas>
+        </div>
 
- <script src="https://api.gazerecorder.com/GazeCloudAPI.js"></script>
+        <div class="chart-container">
+            <h2>Pupil Dilation Over Time</h2>
+            <canvas id="pupilDilationChart"></canvas>
+        </div>
 
+        <div class="chart-container">
+            <h2>Head Displacement Over Time</h2>
+            <canvas id="headMovementChart"></canvas>
+        </div>
+    </div>
 
-      <style type="text/css">
-         body {
-         overflow: hidden;
-         }
-      </style>
-      <script type="text/javascript">
+    <script>
+        let charts = {
+            eyeMovement: null,
+            pupilDilation: null,
+            headMovement: null
+        };
 
+        function computeBasicStats(data) {
+            return {
+                "Total Data Points": data.length,
+                "Average Confidence": mean(data.map(d => d.confidence)),
+                "Pupil Diameter Mean": mean(data.map(d => d.pupilD)),
+                "Pupil Diameter Std Dev": standardDeviation(data.map(d => d.pupilD)),
+                "HeadX Mean": mean(data.map(d => d.HeadX)),
+                "HeadY Mean": mean(data.map(d => d.HeadY)),
+                "HeadZ Mean": mean(data.map(d => d.HeadZ)),
+                "HeadYaw Variance": variance(data.map(d => d.HeadYaw)),
+                "HeadPitch Variance": variance(data.map(d => d.HeadPitch)),
+                "HeadRoll Variance": variance(data.map(d => d.HeadRoll))
+            };
+        }
+
+        function detectSaccades(data, velocityThreshold = 30) {
+            const saccades = [];
+            for (let i = 1; i < data.length; i++) {
+                const dx = data[i].x - data[i-1].x;
+                const dy = data[i].y - data[i-1].y;
+                const dt = data[i].timestamp - data[i-1].timestamp;
+                const velocity = Math.sqrt(dx*dx + dy*dy) / dt;
+                saccades.push(velocity > velocityThreshold);
+            }
+            return saccades;
+        }
+
+        function computeHeadMovement(data) {
+            const displacements = [0];
+            for (let i = 1; i < data.length; i++) {
+                const dx = data[i].HeadX - data[i-1].HeadX;
+                const dy = data[i].HeadY - data[i-1].HeadY;
+                const dz = data[i].HeadZ - data[i-1].HeadZ;
+                displacements.push(Math.sqrt(dx*dx + dy*dy + dz*dz));
+            }
+            return displacements;
+        }
+
+        function mean(arr) {
+            return arr.reduce((a, b) => a + b, 0) / arr.length;
+        }
+
+        function variance(arr) {
+            const m = mean(arr);
+            return mean(arr.map(x => (x - m) ** 2));
+        }
+
+        function standardDeviation(arr) {
+            return Math.sqrt(variance(arr));
+        }
+
+        function updateBasicStats(stats) {
+            const container = document.getElementById('basicStats');
+            container.innerHTML = '';
             
-         function PlotGaze(GazeData) {
+            for (const [key, value] of Object.entries(stats)) {
+                const card = document.createElement('div');
+                card.className = 'stat-card';
+                card.innerHTML = `
+                    <h3>${key}</h3>
+                    <p>${typeof value === 'number' ? value.toFixed(2) : value}</p>
+                `;
+                container.appendChild(card);
+            }
+        }
 
-/*
-	GazeData.state // 0: valid gaze data; -1 : face tracking lost, 1 : gaze uncalibrated
-	GazeData.docX // gaze x in document coordinates
-	GazeData.docY // gaze y in document cordinates
-	GazeData.time // timestamp
-*/
+        function createEyeMovementChart(data) {
+            const ctx = document.getElementById('eyeMovementChart').getContext('2d');
+            if (charts.eyeMovement) charts.eyeMovement.destroy();
+            
+            charts.eyeMovement = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Eye Position',
+                        data: data.map(d => ({x: d.x, y: d.y})),
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)'
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            reverse: true
+                        }
+                    }
+                }
+            });
+        }
 
-         
-             document.getElementById("GazeData").innerHTML = "GazeX: " + GazeData.GazeX + " GazeY: " + GazeData.GazeY;
-             document.getElementById("HeadPhoseData").innerHTML = " HeadX: " + GazeData.HeadX + " HeadY: " + GazeData.HeadY + " HeadZ: " + GazeData.HeadZ;
-             document.getElementById("HeadRotData").innerHTML = " Yaw: " + GazeData.HeadYaw + " Pitch: " + GazeData.HeadPitch + " Roll: " + GazeData.HeadRoll;
-         
+        function createPupilDilationChart(data) {
+            const ctx = document.getElementById('pupilDilationChart').getContext('2d');
+            if (charts.pupilDilation) charts.pupilDilation.destroy();
+            
+            charts.pupilDilation = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map((_, i) => i),
+                    datasets: [{
+                        label: 'Pupil Diameter',
+                        data: data.map(d => d.pupilD),
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        tension: 0.1
+                    }]
+                }
+            });
+        }
 
-         var x = GazeData.docX;
-         var y = GazeData.docY;
-         
-         var gaze = document.getElementById("gaze");
-         x -= gaze .clientWidth/2;
-         y -= gaze .clientHeight/2;
-         
-         
+        function createHeadMovementChart(data) {
+            const displacements = computeHeadMovement(data);
+            const ctx = document.getElementById('headMovementChart').getContext('2d');
+            if (charts.headMovement) charts.headMovement.destroy();
+            
+            charts.headMovement = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map((_, i) => i),
+                    datasets: [{
+                        label: 'Head Displacement',
+                        data: displacements,
+                        borderColor: 'rgba(153, 102, 255, 1)',
+                        tension: 0.1
+                    }]
+                }
+            });
+        }
 
-	gaze.style.left = x + "px";
-	gaze.style.top = y + "px";
+        function processFile() {
+            const fileInput = document.getElementById('csvFile');
+            const file = fileInput.files[0];
+            
+            if (file) {
+                Papa.parse(file, {
+                    header: true,
+                    dynamicTyping: true,
+                    complete: function(results) {
+                        const data = results.data.filter(row => 
+                            row.timestamp && row.x && row.y && row.pupilD &&
+                            row.HeadX && row.HeadY && row.HeadZ
+                        );
+                        
+                        // Convert timestamp from milliseconds
+                        data.forEach(row => {
+                            row.timestamp = new Date(row.timestamp);
+                        });
 
-         
-         if(GazeData.state != 0)
-         {
-         	if( gaze.style.display  == 'block')
-         	gaze  .style.display = 'none';
-         }
-         else
-         {
-         	if( gaze.style.display  == 'none')
-         	gaze  .style.display = 'block';
-         }
-         
-         }
-         
-         //////set callbacks/////////
-   window.addEventListener("load", function() {
-
-         GazeCloudAPI.OnCalibrationComplete =function(){ console.log('gaze Calibration Complete')  }
-         GazeCloudAPI.OnCamDenied =  function(){ console.log('camera  access denied')  }
-         GazeCloudAPI.OnError =  function(msg){ console.log('err: ' + msg)  }
-         GazeCloudAPI.UseClickRecalibration = true;
-      	 GazeCloudAPI.OnResult = PlotGaze; 
-          });
-     
-      </script>
-   </head>
-   <body >
-      <h1>GazeCloudAPI integration example</h1>
-      <button  type="button" onclick="GazeCloudAPI.StartEyeTracking();">Start</button>
-      <button  type="button" onclick="GazeCloudAPI.StopEyeTracking();">Stop</button>
-      <div >
-         <p >  
-            Real-Time Result:
-         <p id = "GazeData" > </p>
-         <p id = "HeadPhoseData" > </p>
-         <p id = "HeadRotData" > </p>
-         </p>
-      </div>
-      <div id ="gaze" style ='position: absolute;display:none;width: 100px;height: 100px;border-radius: 50%;border: solid 2px  rgba(255, 255,255, .2);	box-shadow: 0 0 100px 3px rgba(125, 125,125, .5);	pointer-events: none;	z-index: 999999'></div>
-      ;  
-   </body>
+                        // Update all visualizations
+                        const stats = computeBasicStats(data);
+                        updateBasicStats(stats);
+                        createEyeMovementChart(data);
+                        createPupilDilationChart(data);
+                        createHeadMovementChart(data);
+                    }
+                });
+            }
+        }
+    </script>
+</body>
 </html>
