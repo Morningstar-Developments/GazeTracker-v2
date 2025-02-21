@@ -79,6 +79,9 @@ export class LiveDataRecorder extends EventEmitter {
       if (this.backupStream) {
         this.backupStream.on('error', (error) => this.handleError('Backup stream error', error));
       }
+
+      // Start monitoring
+      this.startMonitoring();
       
       this.log('Recording session initialized successfully');
     } catch (error) {
@@ -184,14 +187,29 @@ export class LiveDataRecorder extends EventEmitter {
         throw new Error('Recording streams not initialized');
       }
 
-      const formattedData = this.buffer.map(point => this.formatDataPoint(point)).join('');
+      const formattedData = this.buffer.map(point => {
+        if (!this.validateDataPoint(point)) {
+          this.stats.errorCount++;
+          return null;
+        }
+        return this.formatDataPoint(point);
+      })
+      .filter(line => line !== null)
+      .join('');
       
-      this.csvStream.write(formattedData);
-      this.backupStream.write(formattedData);
+      if (formattedData) {
+        this.csvStream.write(formattedData);
+        this.backupStream.write(formattedData);
+        
+        const validPoints = this.buffer.length;
+        this.stats.validPoints += validPoints;
+        
+        // Log progress
+        this.log(`Wrote ${validPoints} points to file. Total: ${this.stats.validPoints}`);
+      }
       
-      const validPoints = this.buffer.length;
+      // Clear buffer
       this.buffer = [];
-      this.stats.validPoints += validPoints;
     } catch (error) {
       this.handleError('Error flushing buffer', error);
     }

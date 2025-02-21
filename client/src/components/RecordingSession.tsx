@@ -8,6 +8,7 @@ import {
   exportToDocx,
   exportToMarkdown
 } from '../utils/exportUtils';
+import { saveAs } from 'file-saver';
 
 interface RecordingSessionProps {
   isRecording: boolean;
@@ -37,6 +38,7 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
   isPaused = false
 }) => {
   const [elapsed, setElapsed] = useState<string>('00:00:00');
+  const [dataPoints, setDataPoints] = useState<number>(0);
   const [isMinimized, setIsMinimized] = useState(false);
   const [showExportOptions, setShowExportOptions] = useState(false);
   const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
@@ -72,6 +74,7 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
   useEffect(() => {
     if (gazeData.length > 0) {
       setLastGazePoint(gazeData[gazeData.length - 1]);
+      setDataPoints(gazeData.length);
     }
   }, [gazeData]);
 
@@ -87,26 +90,18 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
         throw new Error(result.error);
       }
 
-      if (result.sessionData) {
-        // Create session data object for export
-        const sessionData = {
-          participantId,
-          sessionType: isPilot ? 'pilot' : 'live',
-          startTime: startTime ? new Date(startTime).toISOString() : null,
-          endTime: new Date().toISOString(),
-          duration: startTime ? Date.now() - startTime : 0,
-          totalDataPoints: result.sessionData.length,
-          gazeData: result.sessionData
-        };
+      if (result.sessionData && result.csvPath) {
+        // Download the CSV file using the returned path
+        const csvResponse = await fetch(`/recordings/${result.csvPath.split('/').pop()}`);
+        const csvBlob = await csvResponse.blob();
+        const filename = result.csvPath.split('/').pop() || `gaze_data_${Date.now()}.csv`;
+        saveAs(csvBlob, filename);
 
-        // Export using the same format as pilot data
-        await exportToCSV(sessionData);
+        setShowExportOptions(false);
+        onExport();
       } else {
-        throw new Error('No session data received from server');
+        throw new Error('No session data or CSV path received from server');
       }
-
-      setShowExportOptions(false);
-      onExport();
     } catch (error) {
       console.error('Export failed:', error);
       alert('Failed to export data. Please try again.');
@@ -465,7 +460,7 @@ const RecordingSession: React.FC<RecordingSessionProps> = ({
           borderRadius: '4px'
         }}>
           <span>Data Points:</span>
-          <span style={{ fontWeight: 'bold' }}>{gazeData.length}</span>
+          <span style={{ fontWeight: 'bold' }}>{dataPoints}</span>
         </div>
         {lastGazePoint && (
           <div style={{ 

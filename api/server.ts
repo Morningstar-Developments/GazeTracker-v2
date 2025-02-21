@@ -38,6 +38,9 @@ async function findAvailablePort(startPort: number): Promise<number> {
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+// Serve static files from recordings directory
+app.use('/recordings', express.static(path.join(process.cwd(), 'recordings')));
+
 // API Routes
 app.use('/api', gazeRoutes);
 

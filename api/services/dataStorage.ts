@@ -9,26 +9,31 @@ export interface SessionConfig {
 }
 
 export class DataStorageService {
-  private currentSession: GazeData[] = [];
-  private sessionConfig: SessionConfig | null = null;
-  private outputDir: string;
+  private currentSession: {
+    config: SessionConfig | null;
+    gazeData: GazeData[];
+  };
+  private sessionStartTime: number = 0;
   private lastFixationStart: number = 0;
   private lastGazePoint: GazeData | null = null;
-  private blinkCount: number = 0;
-  private lastBlinkTime: number = 0;
-  private sessionStartTime: number = 0;
   private fixationCount: number = 0;
   private totalFixationDuration: number = 0;
   private saccadeCount: number = 0;
   private totalSaccadeLength: number = 0;
+  private blinkCount: number = 0;
+  private lastBlinkTime: number = 0;
+  private outputDir: string;
 
   constructor() {
-    this.outputDir = path.join(__dirname, '../../data');
+    this.currentSession = {
+      config: null,
+      gazeData: []
+    };
+    this.outputDir = path.join(process.cwd(), 'data');
     this.ensureDirectoryStructure();
   }
 
   private ensureDirectoryStructure() {
-    // Create main directories if they don't exist
     const dirs = [
       this.outputDir,
       path.join(this.outputDir, 'pilot'),
@@ -46,18 +51,52 @@ export class DataStorageService {
     });
   }
 
-  initializeSession(config: SessionConfig) {
-    this.sessionConfig = config;
-    this.currentSession = [];
+  public initializeSession(config: SessionConfig): void {
+    this.currentSession = {
+      config,
+      gazeData: []
+    };
+    this.sessionStartTime = Date.now();
     this.lastFixationStart = 0;
     this.lastGazePoint = null;
-    this.blinkCount = 0;
-    this.lastBlinkTime = Date.now();
-    this.sessionStartTime = Date.now();
     this.fixationCount = 0;
     this.totalFixationDuration = 0;
     this.saccadeCount = 0;
     this.totalSaccadeLength = 0;
+    this.blinkCount = 0;
+    this.lastBlinkTime = Date.now();
+  }
+
+  public addGazeData(data: GazeData): void {
+    if (!this.currentSession.config) {
+      throw new Error('No active session');
+    }
+    this.currentSession.gazeData.push(data);
+    this.lastGazePoint = data;
+  }
+
+  public getCurrentSession() {
+    return this.currentSession;
+  }
+
+  public clearSession(): void {
+    this.currentSession = {
+      config: null,
+      gazeData: []
+    };
+    this.sessionStartTime = 0;
+    this.lastFixationStart = 0;
+    this.lastGazePoint = null;
+    this.fixationCount = 0;
+    this.totalFixationDuration = 0;
+    this.saccadeCount = 0;
+    this.totalSaccadeLength = 0;
+    this.blinkCount = 0;
+    this.lastBlinkTime = 0;
+  }
+
+  public getGazeDataCount(): number {
+    return this.currentSession.gazeData.length;
   }
 
   private formatTime(timestamp: number): { formattedTime: string, formattedDate: string } {
@@ -140,23 +179,14 @@ export class DataStorageService {
     return enrichedData;
   }
 
-  addGazeData(data: GazeData) {
-    const enrichedData = this.calculateMetrics(data);
-    this.currentSession.push(enrichedData);
-  }
-
-  getCurrentSession() {
-    return this.currentSession;
-  }
-
   saveSession(): { rawFile: string, processedFile: string } {
-    if (!this.sessionConfig) {
+    if (!this.currentSession.config) {
       throw new Error('Session not initialized');
     }
 
     const timestamp = format(new Date(), 'yyyyMMdd_HHmmss');
-    const sessionType = this.sessionConfig.isPilot ? 'pilot' : 'live';
-    const paddedId = this.sessionConfig.participantId.padStart(3, '0');
+    const sessionType = this.currentSession.config.isPilot ? 'pilot' : 'live';
+    const paddedId = this.currentSession.config.participantId.padStart(3, '0');
     
     // Save raw data
     const rawFilename = `P${paddedId}_${sessionType}_${timestamp}_raw.csv`;
@@ -195,7 +225,7 @@ export class DataStorageService {
       'HeadRoll'
     ].join(',');
 
-    const rows = this.currentSession.map(data => [
+    const rows = this.currentSession.gazeData.map(data => [
       data.timestamp,
       data.sessionTime,
       data.formattedTime,
@@ -232,7 +262,7 @@ export class DataStorageService {
       'blinkRate'
     ].join(',');
 
-    const rows = this.currentSession.map(data => [
+    const rows = this.currentSession.gazeData.map(data => [
       data.timestamp,
       data.sessionTime,
       data.fixationDuration || 0,
@@ -246,19 +276,5 @@ export class DataStorageService {
     ].join(','));
 
     fs.writeFileSync(filepath, [headers, ...rows].join('\n'));
-  }
-
-  clearSession() {
-    this.currentSession = [];
-    this.sessionConfig = null;
-    this.lastFixationStart = 0;
-    this.lastGazePoint = null;
-    this.blinkCount = 0;
-    this.lastBlinkTime = 0;
-    this.sessionStartTime = 0;
-    this.fixationCount = 0;
-    this.totalFixationDuration = 0;
-    this.saccadeCount = 0;
-    this.totalSaccadeLength = 0;
   }
 } 

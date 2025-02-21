@@ -9,12 +9,11 @@ import sys
 import random
 from math import sin, cos
 
-# Configure logging
+# Configure logging to write only to file
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.StreamHandler(sys.stdout),
         logging.FileHandler('gaze_tracker.log')
     ]
 )

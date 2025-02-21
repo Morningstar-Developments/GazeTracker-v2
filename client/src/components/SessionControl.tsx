@@ -102,24 +102,41 @@ const SessionControl: React.FC = () => {
     }
   }, [startTime, sessionConfig, isPaused]);
 
-  const handleStartTracking = () => {
+  const handleStartTracking = async () => {
     if (!sessionConfig) return;
     
-    setGazeData([]);
-    setDebugLog([]);
-    setLastLoggedCount(0);
-    setStartTime(Date.now());
-    setIsPaused(false);
-    startTracking(
-      handleGazeData,
-      () => {
-        setCalibrationComplete(true);
-        if (sessionConfig.isPilot) {
-          setDebugLog(prev => [...prev, `[${format(new Date(), 'HH:mm:ss.SSS')}] Calibration complete`]);
+    try {
+      // Initialize session first
+      await fetch('/api/sessions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          participantId: sessionConfig.participantId,
+          isPilot: sessionConfig.isPilot
+        })
+      });
+
+      setGazeData([]);
+      setDebugLog([]);
+      setLastLoggedCount(0);
+      setStartTime(Date.now());
+      setIsPaused(false);
+      startTracking(
+        handleGazeData,
+        () => {
+          setCalibrationComplete(true);
+          if (sessionConfig.isPilot) {
+            setDebugLog(prev => [...prev, `[${format(new Date(), 'HH:mm:ss.SSS')}] Calibration complete`]);
+          }
         }
-      }
-    );
-    setIsTracking(true);
+      );
+      setIsTracking(true);
+    } catch (error) {
+      console.error('Failed to initialize session:', error);
+      alert('Failed to initialize recording session. Please try again.');
+    }
   };
 
   const handleStopTracking = () => {
