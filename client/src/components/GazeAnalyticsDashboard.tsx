@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { GazeData } from '../types/gazeData';
-import { AnalyticsResult } from '../utils/analyticsUtils';
+import { AnalyticsResult, analyzeGazeData } from '../utils/analyticsUtils';
 import { GazeDataVisualizer, VisualizationOptions } from '../utils/visualizationUtils';
 import {
     Box,
@@ -21,9 +21,14 @@ import {
     Tooltip,
     IconButton,
     SelectChangeEvent,
+    Stack,
 } from '@mui/material';
 import { PlayArrow, Pause, Speed, Download, Refresh, Settings } from '@mui/icons-material';
 import { debounce } from 'lodash';
+import BasicStats from './visualizations/BasicStats';
+import GazePath from './visualizations/GazePath';
+import PupilDilation from './visualizations/PupilDilation';
+import HeadMovement from './visualizations/HeadMovement';
 
 // Error boundary component
 class ErrorBoundary extends React.Component<
@@ -65,9 +70,8 @@ class ErrorBoundary extends React.Component<
 }
 
 interface GazeAnalyticsDashboardProps {
-    gazeData: GazeData[];
-    analyticsResult: AnalyticsResult;
-    onError?: (error: Error) => void;
+    sessionData?: GazeData[];
+    onClose?: () => void;
 }
 
 type VisualizationType = 
@@ -88,11 +92,9 @@ const visualizationOptions: VisualizationOptions = {
     performanceMode: true
 };
 
-export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
-    gazeData,
-    analyticsResult,
-    onError
-}) => {
+const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({ sessionData = [], onClose }) => {
+    const [data, setData] = useState<GazeData[]>(sessionData);
+    const [analyticsResult, setAnalyticsResult] = useState<AnalyticsResult>(() => analyzeGazeData(sessionData));
     const containerRef = useRef<HTMLDivElement>(null);
     const visualizerRef = useRef<GazeDataVisualizer | null>(null);
     const [activeTab, setActiveTab] = useState<VisualizationType>('scanpath');
@@ -122,11 +124,11 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
 
     // Memoize data processing with null checks
     const processedData = useMemo(() => ({
-        startTime: gazeData[0]?.timestamp ?? 0,
-        endTime: gazeData[gazeData.length - 1]?.timestamp ?? 0,
-        duration: gazeData.length > 0 ? gazeData[gazeData.length - 1].timestamp - gazeData[0].timestamp : 0,
-        dataPoints: gazeData.length
-    }), [gazeData]);
+        startTime: data[0]?.timestamp ?? 0,
+        endTime: data[data.length - 1]?.timestamp ?? 0,
+        duration: data.length > 0 ? data[data.length - 1].timestamp - data[0].timestamp : 0,
+        dataPoints: data.length
+    }), [data]);
 
     // Initialize visualizer
     useEffect(() => {
@@ -139,7 +141,6 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
             } catch (error) {
                 console.error('Error initializing visualizer:', error);
                 setError('Failed to initialize visualization');
-                onError?.(error as Error);
             }
         }
 
@@ -158,7 +159,6 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
             } catch (error) {
                 console.error('Error updating visualization:', error);
                 setError('Failed to update visualization');
-                onError?.(error as Error);
             } finally {
                 setIsLoading(false);
             }
@@ -168,12 +168,12 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
 
     // Update visualization when data changes
     useEffect(() => {
-        if (!visualizerRef.current || !gazeData.length) return;
+        if (!visualizerRef.current || !data.length) return;
         setError(null);
 
-        const filteredData = filterDataByTimeRange(gazeData, timeRange);
+        const filteredData = filterDataByTimeRange(data, timeRange);
         debouncedUpdate(filteredData);
-    }, [activeTab, timeRange, gazeData, settings]);
+    }, [activeTab, timeRange, data, settings]);
 
     const filterDataByTimeRange = useCallback((data: GazeData[], range: [number, number]): GazeData[] => {
         const rangeStart = processedData.startTime + (processedData.duration * range[0]) / 100;
@@ -213,7 +213,6 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
         } catch (error) {
             console.error('Error in visualization update:', error);
             setError('Failed to update visualization');
-            onError?.(error as Error);
         }
     };
 
@@ -246,13 +245,13 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
     // Export data
     const handleExport = useCallback(() => {
         try {
-            const data = {
-                gazeData,
+            const exportData = {
+                gazeData: data,
                 analyticsResult,
                 timeRange,
                 settings
             };
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -265,163 +264,91 @@ export const GazeAnalyticsDashboard: React.FC<GazeAnalyticsDashboardProps> = ({
             console.error('Error exporting data:', error);
             setError('Failed to export data');
         }
-    }, [gazeData, analyticsResult, timeRange, settings]);
+    }, [data, analyticsResult, timeRange, settings]);
+
+    useEffect(() => {
+        // Update data when sessionData changes
+        setData(sessionData);
+        setAnalyticsResult(analyzeGazeData(sessionData));
+    }, [sessionData]);
+
+    useEffect(() => {
+        // Validate data on component mount or data change
+        if (data.length > 0) {
+            const invalidData = data.some(point => 
+                !point.timestamp || 
+                point.x === undefined || 
+                point.y === undefined
+            );
+
+            if (invalidData) {
+                setError('Some data points are invalid or missing required fields');
+            } else {
+                setError(null);
+            }
+        }
+    }, [data]);
+
+    if (data.length === 0) {
+        return (
+            <Container maxWidth="lg">
+                <Paper sx={{ p: 4, mt: 4, textAlign: 'center' }}>
+                    <Typography variant="h5" gutterBottom>
+                        No Data Available
+                    </Typography>
+                    <Typography variant="body1" color="text.secondary">
+                        Please record a session or upload session data to view analytics.
+                    </Typography>
+                    {onClose && (
+                        <Button onClick={onClose} variant="contained" sx={{ mt: 2 }}>
+                            Close
+                        </Button>
+                    )}
+                </Paper>
+            </Container>
+        );
+    }
 
     return (
         <ErrorBoundary>
-            <Container maxWidth="xl">
-                <Box sx={{ width: '100%', typography: 'body1' }}>
-                    <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                            <Typography variant="h4">
-                                Gaze Analytics Dashboard
-                            </Typography>
-                            <Box>
-                                <Tooltip title="Export Data">
-                                    <IconButton onClick={handleExport}>
-                                        <Download />
-                                    </IconButton>
-                                </Tooltip>
-                                <Tooltip title="Settings">
-                                    <IconButton onClick={() => {/* Open settings dialog */}}>
-                                        <Settings />
-                                    </IconButton>
-                                </Tooltip>
-                            </Box>
-                        </Box>
-
-                        {error && (
-                            <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>
-                                {error}
-                            </Alert>
+            <Container maxWidth="lg">
+                <Box sx={{ py: 4 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={4}>
+                        <Typography variant="h4" gutterBottom>
+                            Gaze Tracking Analytics
+                        </Typography>
+                        {onClose && (
+                            <Button onClick={onClose} variant="outlined">
+                                Close
+                            </Button>
                         )}
-                        
-                        <Tabs
-                            value={activeTab}
-                            onChange={handleTabChange}
-                            aria-label="visualization tabs"
-                            sx={{ mb: 3 }}
-                        >
-                            <Tab label="Scanpath" value="scanpath" />
-                            <Tab label="Heatmap" value="heatmap" />
-                            <Tab label="Temporal Analysis" value="temporal" />
-                            <Tab label="Head Movement" value="head-movement" />
-                            <Tab label="Pupil Diameter" value="pupil-diameter" />
-                            <Tab label="Statistics" value="stats-summary" />
-                        </Tabs>
+                    </Stack>
 
-                        <Grid container spacing={3}>
-                            <Grid item xs={12}>
-                                <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
-                                    <Tooltip title={isPlaying ? 'Pause' : 'Play'}>
-                                        <IconButton
-                                            onClick={() => setIsPlaying(!isPlaying)}
-                                            color={isPlaying ? 'secondary' : 'primary'}
-                                        >
-                                            {isPlaying ? <Pause /> : <PlayArrow />}
-                                        </IconButton>
-                                    </Tooltip>
-                                    
-                                    <FormControl sx={{ minWidth: 120 }}>
-                                        <InputLabel>Speed</InputLabel>
-                                        <Select
-                                            value={playbackSpeed}
-                                            onChange={handleSpeedChange}
-                                            label="Speed"
-                                            startAdornment={<Speed />}
-                                        >
-                                            <MenuItem value={0.5}>0.5x</MenuItem>
-                                            <MenuItem value={1}>1x</MenuItem>
-                                            <MenuItem value={2}>2x</MenuItem>
-                                            <MenuItem value={4}>4x</MenuItem>
-                                        </Select>
-                                    </FormControl>
+                    {error && (
+                        <Alert severity="warning" sx={{ mb: 4 }} onClose={() => setError(null)}>
+                            {error}
+                        </Alert>
+                    )}
 
-                                    <Box sx={{ flex: 1, mx: 2 }}>
-                                        <Slider
-                                            value={timeRange}
-                                            onChange={handleTimeRangeChange}
-                                            valueLabelDisplay="auto"
-                                            valueLabelFormat={value => {
-                                                const timestamp = processedData.startTime + (processedData.duration * value / 100);
-                                                return new Date(timestamp).toISOString().substr(11, 8);
-                                            }}
-                                        />
-                                    </Box>
-                                </Box>
-                            </Grid>
+                    <Box mb={4}>
+                        <BasicStats data={data} />
+                    </Box>
 
-                            <Grid item xs={12}>
-                                <Paper
-                                    ref={containerRef}
-                                    id="visualization-container"
-                                    sx={{
-                                        width: '100%',
-                                        height: 600,
-                                        display: 'flex',
-                                        justifyContent: 'center',
-                                        alignItems: 'center',
-                                        overflow: 'hidden',
-                                        position: 'relative'
-                                    }}
-                                >
-                                    {isLoading && (
-                                        <Box
-                                            sx={{
-                                                position: 'absolute',
-                                                top: 0,
-                                                left: 0,
-                                                right: 0,
-                                                bottom: 0,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                background: 'rgba(255, 255, 255, 0.8)'
-                                            }}
-                                        >
-                                            <CircularProgress />
-                                        </Box>
-                                    )}
-                                </Paper>
-                            </Grid>
+                    <Box mb={4}>
+                        <GazePath data={data} />
+                    </Box>
 
-                            <Grid item xs={12}>
-                                <Paper sx={{ p: 2 }}>
-                                    <Typography variant="h6" gutterBottom>
-                                        Key Metrics
-                                    </Typography>
-                                    <Grid container spacing={2}>
-                                        <Grid item xs={4}>
-                                            <Typography variant="body2" color="textSecondary">
-                                                Average Fixation Duration
-                                            </Typography>
-                                            <Typography variant="h6">
-                                                {analyticsResult.averageFixationDuration.toFixed(2)}ms
-                                            </Typography>
-                                        </Grid>
-                                        <Grid item xs={4}>
-                                            <Typography variant="body2" color="textSecondary">
-                                                Fixations per Minute
-                                            </Typography>
-                                            <Typography variant="h6">
-                                                {analyticsResult.fixationsPerMinute.toFixed(2)}
-                                            </Typography>
-                                        </Grid>
-                                        <Grid item xs={4}>
-                                            <Typography variant="body2" color="textSecondary">
-                                                Average Saccade Velocity
-                                            </Typography>
-                                            <Typography variant="h6">
-                                                {analyticsResult.averageSaccadeVelocity.toFixed(2)}°/s
-                                            </Typography>
-                                        </Grid>
-                                    </Grid>
-                                </Paper>
-                            </Grid>
-                        </Grid>
-                    </Paper>
+                    <Box mb={4}>
+                        <PupilDilation data={data} />
+                    </Box>
+
+                    <Box mb={4}>
+                        <HeadMovement data={data} />
+                    </Box>
                 </Box>
             </Container>
         </ErrorBoundary>
     );
-}; 
+};
+
+export default GazeAnalyticsDashboard; 
