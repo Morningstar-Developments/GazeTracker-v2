@@ -6,7 +6,7 @@ pydantic==2.4.2
 
 # Web Framework & API
 flask==2.3.3
-flask-cors==4.0.0
+flask-cors==4.0.2
 gunicorn==21.2.0
 
 # Data Processing & Analysis
